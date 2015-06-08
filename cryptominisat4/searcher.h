@@ -375,6 +375,7 @@ class Searcher : public HyperEngine
 
             bool needToStopSearch;
             bool update;
+            bool restart_switch_value = false; //false is GLUE, true is GEOM
             uint64_t conflictsDoneThisRestart;
             uint64_t conflictsToDo;
             uint64_t numAgilityNeedRestart;

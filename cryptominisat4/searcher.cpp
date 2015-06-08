@@ -1145,59 +1145,53 @@ void Searcher::check_need_restart()
         }
     }
 
-    switch (params.rest_type) {
+    if (params.rest_type == restart_type_never) {
+        //no restart
+    } else if (params.rest_type == restart_type_geom
+        || params.rest_type == restart_type_luby
+        || (params.rest_type == restart_type_geom_glue_switch && params.restart_switch_value)
+    ) {
+        if (params.conflictsDoneThisRestart > max_conflicts_this_restart)
+            params.needToStopSearch = true;
 
-        case restart_type_never:
-            //Just don't restart no matter what
-            break;
+    } else if (params.rest_type == restart_type_glue
+        || (params.rest_type == restart_type_geom_glue_switch && !params.restart_switch_value)
+    ) {
+        if (hist.glueHist.isvalid()
+            && conf.local_glue_multiplier * hist.glueHist.avg() > hist.glueHistLT.avg()
+        ) {
+            params.needToStopSearch = true;
+        }
 
-        case restart_type_geom:
-        case restart_type_luby:
-            if (params.conflictsDoneThisRestart > max_conflicts_this_restart)
+    } else if (params.rest_type == restart_type_glue_agility) {
+        if (hist.glueHist.isvalid()
+            && conf.local_glue_multiplier * hist.glueHist.avg() > hist.glueHistLT.avg()
+            && agility.getAgility() < conf.agilityLimit
+        ) {
+            params.numAgilityNeedRestart++;
+            if (params.numAgilityNeedRestart > conf.agilityViolationLimit) {
                 params.needToStopSearch = true;
+            }
+        } else {
+            params.numAgilityNeedRestart = 0;
+        }
 
-            break;
-
-        case restart_type_glue:
-            if (hist.glueHist.isvalid()
-                && conf.local_glue_multiplier * hist.glueHist.avg() > hist.glueHistLT.avg()
-            ) {
+    } else if (params.rest_type ==  restart_type_agility) {
+        if (agility.getAgility() < conf.agilityLimit) {
+            params.numAgilityNeedRestart++;
+            if (params.numAgilityNeedRestart > conf.agilityViolationLimit) {
                 params.needToStopSearch = true;
             }
+        } else {
+            params.numAgilityNeedRestart = 0;
+        }
 
-            break;
+    } else {
+        assert(false && "This should not happen, auto decision is make before this point");
+    }
 
-        case restart_type_glue_agility:
-            if (hist.glueHist.isvalid()
-                && conf.local_glue_multiplier * hist.glueHist.avg() > hist.glueHistLT.avg()
-                && agility.getAgility() < conf.agilityLimit
-            ) {
-                params.numAgilityNeedRestart++;
-                if (params.numAgilityNeedRestart > conf.agilityViolationLimit) {
-                    params.needToStopSearch = true;
-                }
-            } else {
-                //Reset counter
-                params.numAgilityNeedRestart = 0;
-            }
-
-            break;
-
-        case restart_type_agility:
-            if (agility.getAgility() < conf.agilityLimit) {
-                params.numAgilityNeedRestart++;
-                if (params.numAgilityNeedRestart > conf.agilityViolationLimit) {
-                    params.needToStopSearch = true;
-                }
-            } else {
-                //Reset counter
-                params.numAgilityNeedRestart = 0;
-            }
-
-            break;
-        default:
-            assert(false && "This should not happen, auto decision is make before this point");
-            break;
+    if (conf.verbosity >= 10 && params.needToStopSearch) {
+        cout << "Restarting after " << params.conflictsDoneThisRestart << endl;
     }
 
     //If agility was used and it's too high, print it if need be
@@ -1355,8 +1349,12 @@ void Searcher::update_history_stats(size_t backtrack_level, size_t glue)
     hist.branchDepthHist.push(decisionLevel());
     hist.branchDepthDeltaHist.push(decisionLevel() - backtrack_level);
 
-    hist.glueHist.push(glue);
-    hist.glueHistLT.push(glue);
+    if (params.rest_type == CMSat::restart_type_glue
+        || (params.rest_type == restart_type_geom_glue_switch && !params.restart_switch_value)
+    ) {
+        hist.glueHist.push(glue);
+        hist.glueHistLT.push(glue);
+    }
 
     hist.conflSizeHist.push(learnt_clause.size());
     hist.conflSizeHistLT.push(learnt_clause.size());
@@ -2036,17 +2034,23 @@ lbool Searcher::solve(const uint64_t _maxConfls)
         params.conflictsToDo = max_confl_per_search_solve_call-stats.conflStats.numConflicts;
         status = search();
 
-        switch (params.rest_type) {
-            case restart_type_geom:
-                max_conflicts_this_restart *= conf.restart_inc;
-                break;
+        params.restart_switch_value = !params.restart_switch_value;
+        if (params.rest_type == restart_type_geom
+            || (
+                params.rest_type == restart_type_geom_glue_switch
+                && params.restart_switch_value //glue rest
+            )
+        ) {
+            max_conflicts_this_restart *= conf.restart_inc;
+        } else if (params.rest_type == restart_type_luby) {
+            max_conflicts_this_restart = luby(conf.restart_inc, loop_num) * (double)conf.restart_first;
+        }
 
-            case restart_type_luby:
-                max_conflicts_this_restart = luby(conf.restart_inc, loop_num) * (double)conf.restart_first;
-                break;
-
-            default:
-                break;
+        if (conf.verbosity >= 10) {
+            cout << "Max restart this time: " << max_conflicts_this_restart
+            << " rest type:  " << restart_type_to_string(params.rest_type)
+            << " params.restart_switch_value: " << (int)params.restart_switch_value
+            << endl;
         }
 
         if (must_abort(status)) {

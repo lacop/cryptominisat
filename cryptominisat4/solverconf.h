@@ -54,7 +54,7 @@ enum Restart {
     , restart_type_luby
     , restart_type_agility
     , restart_type_never
-    , restart_type_automatic
+    , restart_type_geom_glue_switch
 };
 
 inline std::string getNameOfCleanType(ClauseCleaningTypes clauseCleaningType)
@@ -154,7 +154,7 @@ class SolverConf
 
         //For restarting
         unsigned    restart_first;      ///<The initial restart limit.                                                                (default 100)
-        double    restart_inc;        ///<The factor with which the restart limit is multiplied in each restart.                    (default 1.5)
+        double    restart_inc;        ///<The factor with which the restart limit is multiplied in each restart
         unsigned   burst_search_len;
         Restart  restartType;   ///<If set, the solver will always choose the given restart strategy
         int       do_blocking_restart;

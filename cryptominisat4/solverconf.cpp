@@ -54,10 +54,10 @@ DLL_PUBLIC SolverConf::SolverConf() :
         , glue_must_keep_clause_if_below_or_eq(5)
 
         //Restarting
-        , restart_first(300)
-        , restart_inc(2)
+        , restart_first(100)
+        , restart_inc(1.1)
         , burst_search_len(300)
-        , restartType(restart_type_glue)
+        , restartType(CMSat::restart_type_geom_glue_switch)
         , do_blocking_restart(1)
         , blocking_restart_trail_hist_length(5000)
         , blocking_restart_multip(1.4)

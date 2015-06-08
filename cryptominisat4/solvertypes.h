@@ -64,8 +64,8 @@ inline std::string restart_type_to_string(const Restart type)
         case restart_type_never:
             return "never restart";
 
-        case restart_type_automatic:
-            return "automatic";
+        case restart_type_geom_glue_switch:
+            return "geom glue alternating";
     }
 
     assert(false && "oops, one of the restart types has no string name");
