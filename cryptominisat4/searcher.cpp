@@ -69,7 +69,7 @@ Searcher::Searcher(const SolverConf *_conf, Solver* _solver, bool* _needToInterr
     more_red_minim_limit_cache_actual = conf.more_red_minim_limit_cache;
     mtrand.seed(conf.origSeed);
     hist.setSize(conf.shortTermHistorySize, conf.blocking_restart_trail_hist_length);
-    conf.cur_max_temporary_learnt_clauses = conf.max_temporary_learnt_clauses;
+    conf.cur_max_temp_red_cls = conf.max_temporary_learnt_clauses;
 }
 
 Searcher::~Searcher()
@@ -1832,7 +1832,7 @@ void Searcher::restore_order_heap()
 void Searcher::reduce_db_if_needed()
 {
     //Check if we should do DBcleaning
-    if (num_red_cls_reducedb > conf.cur_max_temporary_learnt_clauses) {
+    if (num_red_cls_reducedb > conf.cur_max_temp_red_cls) {
         if (conf.verbosity >= 3) {
             cout
             << "c "
@@ -1849,7 +1849,7 @@ void Searcher::reduce_db_if_needed()
         }
         must_consolidate_mem = true;
         watches.consolidate();
-        conf.cur_max_temporary_learnt_clauses *= conf.increaseClean;
+        conf.cur_max_temp_red_cls *= conf.inc_max_temp_red_cls;
 
         num_red_cls_reducedb = count_num_red_cls_reducedb();
     }
@@ -1891,6 +1891,9 @@ lbool Searcher::perform_scc_and_varreplace_if_needed()
         if (!solver->varReplacer->replace_if_enough_is_found(floor((double)solver->get_num_free_vars()*0.001))) {
             return l_False;
         }
+        #ifdef SLOW_DEBUG
+        assert(solver->check_order_heap_sanity());
+        #endif
     }
 
     return l_Undef;
