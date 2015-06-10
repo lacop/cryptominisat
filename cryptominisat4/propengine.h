@@ -120,8 +120,8 @@ protected:
     Lit                 failBinLit;       ///< Used to store which watches[lit] we were looking through when conflict occured
 
     template<bool update_bogoprops>
-    PropBy propagateAnyOrder();
-    PropBy propagateBinFirst(
+    PropBy propagate_any_order();
+    PropBy propagate_strict_order(
         #ifdef STATS_NEEDED
         AvgCalc<size_t>* watchListSizeTraversed = NULL
         #endif
@@ -187,7 +187,6 @@ protected:
     void     print_trail();
 
     //Var selection, activity, etc.
-    AgilityData agility;
     void sortWatched();
     void updateVars(
         const vector<uint32_t>& outerToInter
@@ -212,7 +211,7 @@ private:
     bool propagate_long_clause_occur(const ClOffset offset);
 
     template<bool update_bogoprops = true>
-    bool propBinaryClause(
+    bool prop_bin_cl(
         watch_subarray_const::const_iterator i
         , const Lit p
         , PropBy& confl
@@ -234,27 +233,27 @@ private:
     );
     void update_glue(Clause& c);
 
-    PropResult propTriClause (
+    PropResult prop_tri_cl_strict_order (
         watch_subarray_const::const_iterator i
         , const Lit p
         , PropBy& confl
     );
     template<bool update_bogoprops = true>
-    bool propTriClauseAnyOrder(
+    bool prop_tri_cl_any_order(
         watch_subarray_const::const_iterator i
         , const Lit lit1
         , PropBy& confl
     );
 
     ///Propagate >3-long clause
-    PropResult propNormalClause(
+    PropResult prop_long_cl_strict_order(
         watch_subarray_const::const_iterator i
         , watch_subarray::iterator &j
         , const Lit p
         , PropBy& confl
     );
     template<bool update_bogoprops>
-    bool propNormalClauseAnyOrder(
+    bool prop_long_cl_any_order(
         watch_subarray_const::const_iterator i
         , watch_subarray::iterator &j
         , const Lit p
@@ -366,9 +365,9 @@ void PropEngine::enqueue(const Lit p, const PropBy from)
 
     const Var v = p.var();
     assert(value(v) == l_Undef);
-    if (!watches[(~p).toInt()].empty()) {
+    /*if (!watches[(~p).toInt()].empty()) {
         watches.prefetch((~p).toInt());
-    }
+    }*/
 
     const bool sign = p.sign();
     assigns[v] = boolToLBool(!sign);
@@ -389,16 +388,6 @@ void PropEngine::enqueue(const Lit p, const PropBy from)
         #ifdef STATS_NEEDED
         propStats.varSetPos++;
         #endif
-    }
-
-    if (varData[v].polarity != sign) {
-        agility.update(true);
-
-        #ifdef STATS_NEEDED
-        propStats.varFlipped++;
-        #endif
-    } else {
-        agility.update(false);
     }
 
     //REVERSED: Only update non-decision: this way, flipped decisions don't get saved

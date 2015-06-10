@@ -282,25 +282,13 @@ void Main::add_supported_options()
     //    , "Greedily unbound variables that are not needed for SAT")
     ;
 
-    std::ostringstream ssAgilG;
-    ssAgilG << std::setprecision(7) << conf.agilityG;
-
-    std::ostringstream ssAgilL;
-    ssAgilL << std::setprecision(7) << conf.agilityLimit;
-
     std::ostringstream s_blocking_multip;
     s_blocking_multip << std::setprecision(4) << conf.blocking_restart_multip;
 
     po::options_description restartOptions("Restart options");
     restartOptions.add_options()
-    ("agilg", po::value(&conf.agilityG)->default_value(conf.agilityG, ssAgilG.str())
-        , "See paper by Armin Biere on agilities")
     ("restart", po::value<string>()
-        , "{geom, agility, glue, glueagility}  Restart strategy to follow.")
-    ("agillim", po::value(&conf.agilityLimit)->default_value(conf.agilityLimit, ssAgilL.str())
-        , "The agility below which the agility is considered too low")
-    ("agilviollim", po::value(&conf.agilityViolationLimit)->default_value(conf.agilityViolationLimit)
-        , "Number of agility limit violations over which to demand a restart")
+        , "{geom, glue, luby}  Restart strategy to follow.")
     ("gluehist", po::value(&conf.shortTermHistorySize)->default_value(conf.shortTermHistorySize)
         , "The size of the moving window for short-term glue history of redundant clauses. If higher, the minimal number of conflicts between restarts is longer")
     ("blkrest", po::value(&conf.do_blocking_restart)->default_value(conf.do_blocking_restart)
@@ -405,8 +393,8 @@ void Main::add_supported_options()
 
     po::options_description simplificationOptions("Simplification options");
     simplificationOptions.add_options()
-    ("schedsimp", po::value(&conf.regularly_simplify_problem)->default_value(conf.regularly_simplify_problem)
-        , "Perform regular simplification rounds")
+    ("schedsimp", po::value(&conf.do_simplify_problem)->default_value(conf.do_simplify_problem)
+        , "Perform simplification rounds. If 0, we never perform any.")
     ("presimp", po::value(&conf.simplify_at_startup)->default_value(conf.simplify_at_startup)
         , "Perform simplification at the very start")
     ("nonstop,n", po::value(&conf.never_stop_search)->default_value(conf.never_stop_search)
@@ -844,10 +832,10 @@ void Main::handle_drup_option()
 
 void Main::parse_var_elim_strategy()
 {
-    if (var_elim_strategy == getNameOfElimStrategy(elimstrategy_heuristic)) {
-        conf.var_elim_strategy = elimstrategy_heuristic;
-    } else if (var_elim_strategy == getNameOfElimStrategy(elimstrategy_calculate_exactly)) {
-        conf.var_elim_strategy = elimstrategy_calculate_exactly;
+    if (var_elim_strategy == getNameOfElimStrategy(ElimStrategy::heuristic)) {
+        conf.var_elim_strategy = ElimStrategy::heuristic;
+    } else if (var_elim_strategy == getNameOfElimStrategy(ElimStrategy::calculate_exactly)) {
+        conf.var_elim_strategy = ElimStrategy::calculate_exactly;
     } else {
         std::cerr
         << "ERROR: Cannot parse option given to '--elimstrgy'. It's '"
@@ -863,15 +851,11 @@ void Main::parse_restart_type()
     if (vm.count("restart")) {
         string type = vm["restart"].as<string>();
         if (type == "geom")
-            conf.restartType = restart_type_geom;
+            conf.restartType = Restart::geom;
         else if (type == "luby")
-            conf.restartType = restart_type_luby;
+            conf.restartType = Restart::luby;
         else if (type == "glue")
-            conf.restartType = restart_type_glue;
-        else if (type == "agility")
-            conf.restartType = restart_type_agility;
-        else if (type == "glueagility")
-            conf.restartType = restart_type_glue_agility;
+            conf.restartType = Restart::glue;
         else throw WrongParam("restart", "unknown restart type");
     }
 }
@@ -881,10 +865,10 @@ void Main::parse_polarity_type()
     if (vm.count("polar")) {
         string mode = vm["polar"].as<string>();
 
-        if (mode == "true") conf.polarity_mode = polarmode_pos;
-        else if (mode == "false") conf.polarity_mode = polarmode_neg;
-        else if (mode == "rnd") conf.polarity_mode = polarmode_rnd;
-        else if (mode == "auto") conf.polarity_mode = polarmode_automatic;
+        if (mode == "true") conf.polarity_mode = PolarityMode::polarmode_pos;
+        else if (mode == "false") conf.polarity_mode = PolarityMode::polarmode_neg;
+        else if (mode == "rnd") conf.polarity_mode = PolarityMode::polarmode_rnd;
+        else if (mode == "auto") conf.polarity_mode = PolarityMode::polarmode_automatic;
         else throw WrongParam(mode, "unknown polarity-mode");
     }
 }

@@ -147,7 +147,7 @@ void Searcher::add_lit_to_learnt(
 
             //Glucose 2.1
             if (update_polarity_and_activity
-                && params.rest_type != restart_type_geom
+                && params.rest_type != Restart::geom
                 && varData[var].reason != PropBy()
             ) {
                 if (varData[var].reason.getType() == clause_t) {
@@ -689,7 +689,7 @@ Clause* Searcher::analyze_conflict(
     stats.litsRedFinal += learnt_clause.size();
     out_btlevel = find_backtrack_level_of_learnt();
     if (update_polarity_and_activity
-        && params.rest_type == restart_type_glue
+        && params.rest_type == Restart::glue
         && conf.extra_bump_var_activities_based_on_glue
     ) {
         bump_var_activities_based_on_implied_by_learnts(glue);
@@ -981,7 +981,6 @@ lbool Searcher::search()
     //Stats reset & update
     if (params.update)
         stats.numRestarts++;
-    agility.reset(conf.agilityLimit);
     hist.clear();
 
     assert(solver->prop_at_head());
@@ -1145,64 +1144,24 @@ void Searcher::check_need_restart()
         }
     }
 
-    if (params.rest_type == restart_type_never) {
+    if (params.rest_type == Restart::never) {
         //no restart
-    } else if (params.rest_type == restart_type_geom
-        || params.rest_type == restart_type_luby
-        || (params.rest_type == restart_type_geom_glue_switch && params.restart_switch_value)
+    } else if (params.rest_type == Restart::geom
+        || params.rest_type == Restart::luby
+        || (params.rest_type == Restart::geom_glue_switch && params.restart_switch_value)
     ) {
         if (params.conflictsDoneThisRestart > max_conflicts_this_restart)
             params.needToStopSearch = true;
-
-    } else if (params.rest_type == restart_type_glue
-        || (params.rest_type == restart_type_geom_glue_switch && !params.restart_switch_value)
+    } else if (params.rest_type == Restart::glue
+        || (params.rest_type == Restart::geom_glue_switch && !params.restart_switch_value)
     ) {
         if (hist.glueHist.isvalid()
             && conf.local_glue_multiplier * hist.glueHist.avg() > hist.glueHistLT.avg()
         ) {
             params.needToStopSearch = true;
         }
-
-    } else if (params.rest_type == restart_type_glue_agility) {
-        if (hist.glueHist.isvalid()
-            && conf.local_glue_multiplier * hist.glueHist.avg() > hist.glueHistLT.avg()
-            && agility.getAgility() < conf.agilityLimit
-        ) {
-            params.numAgilityNeedRestart++;
-            if (params.numAgilityNeedRestart > conf.agilityViolationLimit) {
-                params.needToStopSearch = true;
-            }
-        } else {
-            params.numAgilityNeedRestart = 0;
-        }
-
-    } else if (params.rest_type ==  restart_type_agility) {
-        if (agility.getAgility() < conf.agilityLimit) {
-            params.numAgilityNeedRestart++;
-            if (params.numAgilityNeedRestart > conf.agilityViolationLimit) {
-                params.needToStopSearch = true;
-            }
-        } else {
-            params.numAgilityNeedRestart = 0;
-        }
-
     } else {
         assert(false && "This should not happen, auto decision is make before this point");
-    }
-
-    if (conf.verbosity >= 10 && params.needToStopSearch) {
-        cout << "Restarting after " << params.conflictsDoneThisRestart << endl;
-    }
-
-    //If agility was used and it's too high, print it if need be
-    if (conf.verbosity >= 4
-        && params.needToStopSearch
-        && (conf.restartType == restart_type_agility
-            || conf.restartType == restart_type_glue_agility)
-    ) {
-        cout << "c Agility was too low, restarting asap";
-        printAgilityStats();
-        cout << endl;
     }
 
     //Conflict limit reached?
@@ -1349,8 +1308,8 @@ void Searcher::update_history_stats(size_t backtrack_level, size_t glue)
     hist.branchDepthHist.push(decisionLevel());
     hist.branchDepthDeltaHist.push(decisionLevel() - backtrack_level);
 
-    if (params.rest_type == CMSat::restart_type_glue
-        || (params.rest_type == restart_type_geom_glue_switch && !params.restart_switch_value)
+    if (params.rest_type == Restart::glue
+        || (params.rest_type == Restart::geom_glue_switch && !params.restart_switch_value)
     ) {
         hist.glueHist.push(glue);
         hist.glueHistLT.push(glue);
@@ -1358,9 +1317,6 @@ void Searcher::update_history_stats(size_t backtrack_level, size_t glue)
 
     hist.conflSizeHist.push(learnt_clause.size());
     hist.conflSizeHistLT.push(learnt_clause.size());
-
-    hist.agilityHist.push(agility.getAgility());
-    hist.agilityHistLT.push(agility.getAgility());
 
     hist.numResolutionsHist.push(resolutions.sum());
     hist.numResolutionsHistLT.push(resolutions.sum());
@@ -1588,12 +1544,12 @@ lbool Searcher::burst_search()
 
     //Set burst config
     conf.random_var_freq = 1;
-    conf.polarity_mode = polarmode_rnd;
+    conf.polarity_mode = PolarityMode::polarmode_rnd;
 
     //Do burst
     params.clear();
     params.conflictsToDo = conf.burst_search_len;
-    params.rest_type = restart_type_never;
+    params.rest_type = Restart::never;
     lbool status = search();
     longest_dec_trail.clear();
 
@@ -2038,14 +1994,14 @@ lbool Searcher::solve(const uint64_t _maxConfls)
         status = search();
 
         params.restart_switch_value = !params.restart_switch_value;
-        if (params.rest_type == restart_type_geom
+        if (params.rest_type == Restart::geom
             || (
-                params.rest_type == restart_type_geom_glue_switch
+                params.rest_type == Restart::geom_glue_switch
                 && params.restart_switch_value //glue rest
             )
         ) {
             max_conflicts_this_restart *= conf.restart_inc;
-        } else if (params.rest_type == restart_type_luby) {
+        } else if (params.rest_type == Restart::luby) {
             max_conflicts_this_restart = luby(conf.restart_inc, loop_num) * (double)conf.restart_first;
         }
 
@@ -2181,16 +2137,16 @@ void Searcher::print_iteration_solving_stats()
 bool Searcher::pickPolarity(const Var var)
 {
     switch(conf.polarity_mode) {
-        case polarmode_neg:
+        case PolarityMode::polarmode_neg:
             return false;
 
-        case polarmode_pos:
+        case PolarityMode::polarmode_pos:
             return true;
 
-        case polarmode_rnd:
+        case PolarityMode::polarmode_rnd:
             return mtrand.randInt(1);
 
-        case polarmode_automatic:
+        case PolarityMode::polarmode_automatic:
             return getStoredPolarity(var);
         default:
             assert(false);
@@ -2445,26 +2401,6 @@ void Searcher::stamp_based_more_minim(vector<Lit>& cl)
 bool Searcher::VarFilter::operator()(uint32_t var) const
 {
     return (cc->value(var) == l_Undef && solver->varData[var].is_decision);
-}
-
-void Searcher::printAgilityStats()
-{
-    cout
-    << " -- "
-    << " confl:" << std::setw(6) << params.conflictsDoneThisRestart
-    << ", rest:" << std::setw(3) << stats.numRestarts
-    << ", ag:" << std::setw(4) << std::fixed << std::setprecision(2)
-    << agility.getAgility()
-
-    << ", agLim:" << std::setw(4) << std::fixed << std::setprecision(2)
-    << conf.agilityLimit
-
-    << ", agHist:" << std::setw(4) << std::fixed << std::setprecision(3)
-    << hist.agilityHist.avg()
-
-    /*<< ", agilityHistLong: " << std::setw(6) << std::fixed << std::setprecision(3)
-    << agilityHist.avgLong()*/
-    ;
 }
 
 uint64_t Searcher::sumConflicts() const
@@ -2836,13 +2772,13 @@ PropBy Searcher::propagate(
 
     PropBy ret;
     if (conf.propBinFirst) {
-        ret = propagateBinFirst(
+        ret = propagate_strict_order(
             #ifdef STATS_NEEDED
             watchListSizeTraversed
             #endif
         );
     } else {
-        ret = propagateAnyOrder<update_bogoprops>();
+        ret = propagate_any_order<update_bogoprops>();
     }
 
     //Drup -- If declevel 0 propagation, we have to add the unitaries

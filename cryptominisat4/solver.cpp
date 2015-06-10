@@ -461,7 +461,7 @@ Clause* Solver::add_clause_int(
             propStats.propsUnit++;
             #endif
             if (attach) {
-                ok = (propagate().isNULL());
+                ok = (propagate<true>().isNULL());
             }
 
             return NULL;
@@ -1314,7 +1314,7 @@ lbool Solver::solve()
     if (status == l_Undef
         && conf.simplify_at_startup
         && (solveStats.numSimplify == 0 || conf.simplify_at_every_startup)
-        && conf.regularly_simplify_problem
+        && conf.do_simplify_problem
         && nVars() > 0
     ) {
         status = simplify_problem(!conf.full_simplify_at_startup);
@@ -1516,7 +1516,7 @@ lbool Solver::iterate_until_solved()
 
         zero_level_assigns_by_searcher += trail.size() - origTrailSize;
 
-        if (conf.regularly_simplify_problem) {
+        if (conf.do_simplify_problem) {
             status = simplify_problem(false);
         }
     }
@@ -3146,7 +3146,7 @@ bool Solver::fully_enqueue_this(const Lit lit)
     if (val == l_Undef) {
         assert(varData[lit.var()].removed == Removed::none);
         enqueue(lit);
-        ok = propagate().isNULL();
+        ok = propagate<true>().isNULL();
 
         if (!ok) {
             return false;
@@ -3437,7 +3437,7 @@ void Solver::reconfigure(int val)
             //Luby
             conf.restart_inc = 1.5;
             conf.restart_first = 100;
-            conf.restartType = CMSat::restart_type_luby;
+            conf.restartType = CMSat::Restart::luby;
             break;
         }
 
@@ -3465,11 +3465,6 @@ void Solver::reconfigure(int val)
         case 6: {
             //TODO disable termporary clause db and use inc_max_temp_red_cls
             conf.inc_max_temp_red_cls = 1.5;
-            break;
-        }
-
-        case 7: {
-            conf.restartType = CMSat::restart_type_agility;
             break;
         }
 

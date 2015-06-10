@@ -52,7 +52,6 @@ PropEngine::PropEngine(
         CNF(_conf, _needToInterrupt)
         , qhead(0)
 {
-    agility.setup(conf.agilityG, conf.agilityLimit);
 }
 
 PropEngine::~PropEngine()
@@ -225,7 +224,7 @@ is incorrect (i.e. both literals evaluate to FALSE). If conflict if found,
 sets failBinLit
 */
 template<bool update_bogoprops>
-inline bool PropEngine::propBinaryClause(
+inline bool PropEngine::prop_bin_cl(
     watch_subarray_const::const_iterator i
     , const Lit p
     , PropBy& confl
@@ -360,7 +359,7 @@ PropResult PropEngine::handle_normal_prop_fail(
     return PROP_FAIL;
 }
 
-inline PropResult PropEngine::propNormalClause(
+inline PropResult PropEngine::prop_long_cl_strict_order(
     watch_subarray_const::const_iterator i
     , watch_subarray::iterator &j
     , const Lit p
@@ -405,7 +404,7 @@ inline PropResult PropEngine::propNormalClause(
 
 template<bool update_bogoprops>
 inline
-bool PropEngine::propNormalClauseAnyOrder(
+bool PropEngine::prop_long_cl_any_order(
     watch_subarray_const::const_iterator i
     , watch_subarray::iterator &j
     , const Lit p
@@ -541,7 +540,7 @@ PropResult PropEngine::handle_prop_tri_fail(
     return PROP_FAIL;
 }
 
-inline PropResult PropEngine::propTriClause(
+inline PropResult PropEngine::prop_tri_cl_strict_order(
     watch_subarray_const::const_iterator i
     , const Lit lit1
     , PropBy& confl
@@ -576,7 +575,7 @@ inline PropResult PropEngine::propTriClause(
 }
 
 template<bool update_bogoprops>
-inline bool PropEngine::propTriClauseAnyOrder(
+inline bool PropEngine::prop_tri_cl_any_order(
     watch_subarray_const::const_iterator i
     , const Lit lit1
     , PropBy& confl
@@ -673,7 +672,7 @@ inline void PropEngine::propTriHelperAnyOrder(
 }
 
 template<bool update_bogoprops>
-PropBy PropEngine::propagateAnyOrder()
+PropBy PropEngine::propagate_any_order()
 {
     PropBy confl;
 
@@ -694,7 +693,7 @@ PropBy PropEngine::propagateAnyOrder()
         for (; i != end; i++) {
             if (i->isBinary()) {
                 *j++ = *i;
-                if (!propBinaryClause<update_bogoprops>(i, p, confl)) {
+                if (!prop_bin_cl<update_bogoprops>(i, p, confl)) {
                     i++;
                     break;
                 }
@@ -704,7 +703,7 @@ PropBy PropEngine::propagateAnyOrder()
             //Propagate tri clause
             if (i->isTri()) {
                 *j++ = *i;
-                if (!propTriClauseAnyOrder<update_bogoprops>(i, p, confl)) {
+                if (!prop_tri_cl_any_order<update_bogoprops>(i, p, confl)) {
                     i++;
                     break;
                 }
@@ -712,7 +711,7 @@ PropBy PropEngine::propagateAnyOrder()
             }
 
             //propagate normal clause
-            if (!propNormalClauseAnyOrder<update_bogoprops>(i, j, p, confl)) {
+            if (!prop_long_cl_any_order<update_bogoprops>(i, j, p, confl)) {
                 i++;
                 break;
             }
@@ -727,13 +726,13 @@ PropBy PropEngine::propagateAnyOrder()
     }
 
     #ifdef VERBOSE_DEBUG
-    cout << "Propagation (propagateAnyOrder) ended." << endl;
+    cout << "Propagation (propagate_any_order) ended." << endl;
     #endif
 
     return confl;
 }
-template PropBy PropEngine::propagateAnyOrder<true>();
-template PropBy PropEngine::propagateAnyOrder<false>();
+template PropBy PropEngine::propagate_any_order<true>();
+template PropBy PropEngine::propagate_any_order<false>();
 
 void PropEngine::sortWatched()
 {
@@ -871,7 +870,7 @@ inline void PropEngine::updateWatch(
     }
 }
 
-PropBy PropEngine::propagateBinFirst(
+PropBy PropEngine::propagate_strict_order(
     #ifdef STATS_NEEDED
     AvgCalc<size_t>* watchListSizeTraversed
     #endif
@@ -901,7 +900,7 @@ PropBy PropEngine::propagateBinFirst(
 
             //Propagate binary clause
             if (i->isBinary()) {
-                if (!propBinaryClause(i, p, confl)) {
+                if (!prop_bin_cl(i, p, confl)) {
                     break;
                 }
 
@@ -938,7 +937,7 @@ PropBy PropEngine::propagateBinFirst(
             if (i->isTri()) {
                 *j++ = *i;
                 //Propagate tri clause
-                ret = propTriClause(i, p, confl);
+                ret = prop_tri_cl_strict_order(i, p, confl);
                  if (ret == PROP_SOMETHING || ret == PROP_FAIL) {
                     //Conflict or propagated something
                     i++;
@@ -951,7 +950,7 @@ PropBy PropEngine::propagateBinFirst(
             } //end TRICLAUSE
 
             if (i->isClause()) {
-                ret = propNormalClause(i, j, p, confl);
+                ret = prop_long_cl_strict_order(i, j, p, confl);
                  if (ret == PROP_SOMETHING || ret == PROP_FAIL) {
                     //Conflict or propagated something
                     i++;
@@ -977,7 +976,7 @@ PropBy PropEngine::propagateBinFirst(
     }
 
     #ifdef VERBOSE_DEBUG
-    cout << "Propagation (propagateBinFirst) ended." << endl;
+    cout << "Propagation (propagate_strict_order) ended." << endl;
     #endif
 
     return confl;
@@ -996,7 +995,7 @@ PropBy PropEngine::propagateIrredBin()
                 continue;
 
             //Propagate, if conflict, exit
-            if (!propBinaryClause(k, p, confl))
+            if (!prop_bin_cl(k, p, confl))
                 return confl;
         }
     }

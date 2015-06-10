@@ -33,7 +33,7 @@ DLL_PUBLIC SolverConf::SolverConf() :
         , var_decay_start(0.8)
         , var_decay_max(0.95)
         , random_var_freq(0)
-        , polarity_mode(polarmode_automatic)
+        , polarity_mode(PolarityMode::polarmode_automatic)
         , do_calc_polarity_first_time(true)
         , do_calc_polarity_every_time(false)
 
@@ -57,7 +57,7 @@ DLL_PUBLIC SolverConf::SolverConf() :
         , restart_first(100)
         , restart_inc(1.1)
         , burst_search_len(300)
-        , restartType(CMSat::restart_type_geom_glue_switch)
+        , restartType(Restart::geom_glue_switch)
         , do_blocking_restart(1)
         , blocking_restart_trail_hist_length(5000)
         , blocking_restart_multip(1.4)
@@ -93,11 +93,6 @@ DLL_PUBLIC SolverConf::SolverConf() :
         , maxTime          (std::numeric_limits<double>::max())
         , maxConfl         (std::numeric_limits<long>::max())
 
-        //Agilities
-        , agilityG                  (0.9999)
-        , agilityLimit              (0.03)
-        , agilityViolationLimit     (20)
-
         //Glues
         , update_glues_on_prop(false)
         , update_glues_on_analyze(true)
@@ -127,7 +122,7 @@ DLL_PUBLIC SolverConf::SolverConf() :
         , updateVarElimComplexityOTF(true)
         , updateVarElimComplexityOTF_limitvars(200)
         , updateVarElimComplexityOTF_limitavg(40ULL*1000ULL)
-        , var_elim_strategy  (elimstrategy_heuristic)
+        , var_elim_strategy  (ElimStrategy::heuristic)
         , varElimCostEstimateStrategy(0)
         , varElimRatioPerIter(0.70)
         , skip_some_bve_resolvents(true)
@@ -181,7 +176,7 @@ DLL_PUBLIC SolverConf::SolverConf() :
         //Iterative Alo Scheduling
         , simplify_at_startup(true)
         , simplify_at_every_startup(false)
-        , regularly_simplify_problem(true)
+        , do_simplify_problem(true)
         , full_simplify_at_startup(false)
         , never_stop_search(false)
         , num_conflicts_of_search(50ULL*1000ULL)

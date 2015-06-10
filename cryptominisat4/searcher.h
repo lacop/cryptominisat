@@ -79,10 +79,6 @@ class Searcher : public HyperEngine
             AvgCalc<uint32_t>   numResolutionsHist;  ///< Number of resolutions during conflict analysis
             AvgCalc<uint32_t>   numResolutionsHistLT;
 
-            //lits, vars
-            AvgCalc<double, double>  agilityHist;
-            AvgCalc<double, double>  agilityHistLT;
-
             #ifdef STATS_NEEDED
             bqueue<uint32_t>   trailDepthHist;
             AvgCalc<bool>       conflictAfterConflict;
@@ -112,9 +108,6 @@ class Searcher : public HyperEngine
                 glueHist.clear();
                 conflSizeHist.clear();
                 numResolutionsHist.clear();
-
-                //lits, vars
-                agilityHist.clear();
 
                 #ifdef STATS_NEEDED
                 trailDepthHist.clear();
@@ -185,7 +178,7 @@ class Searcher : public HyperEngine
 
         vector<lbool>  model;
         vector<Lit>   conflict;     ///<If problem is unsatisfiable (possibly under assumptions), this vector represent the final conflict clause expressed in the assumptions.
-        template<bool update_bogoprops = true>
+        template<bool update_bogoprops>
         PropBy propagate(
             #ifdef STATS_NEEDED
             AvgCalc<size_t>* watchListSizeTraversed = NULL
@@ -335,9 +328,6 @@ class Searcher : public HyperEngine
         //Settings
         Solver*   solver;          ///< Thread control class
 
-        //Stats printing
-        void printAgilityStats();
-
         /////////////////
         // Searching
         /// Search for a given number of conflicts.
@@ -370,7 +360,6 @@ class Searcher : public HyperEngine
                 update = true;
                 needToStopSearch = false;
                 conflictsDoneThisRestart = 0;
-                numAgilityNeedRestart = 0;
             }
 
             bool needToStopSearch;
@@ -378,8 +367,7 @@ class Searcher : public HyperEngine
             bool restart_switch_value = false; //false is GLUE, true is GEOM
             uint64_t conflictsDoneThisRestart;
             uint64_t conflictsToDo;
-            uint64_t numAgilityNeedRestart;
-            Restart rest_type = restart_type_never;
+            Restart rest_type = Restart::never;
         };
         SearchParams params;
         vector<Lit> learnt_clause;

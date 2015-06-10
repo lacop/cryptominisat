@@ -57,11 +57,11 @@ class SolutionExtender
         void replaceBackwardSet(const Lit toSet);
         bool propagateCl(const Clause* cl, const Lit blockedOn);
         bool propagate();
-        bool propBinaryClause(
+        bool prop_bin_cl(
             watch_subarray_const::const_iterator i
             , const Lit p
         );
-        bool propTriClause(
+        bool prop_tri_cl_strict_order(
             watch_subarray_const::const_iterator i
             , const Lit p
         );

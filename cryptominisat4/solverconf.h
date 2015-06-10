@@ -40,21 +40,19 @@ enum ClauseCleaningTypes {
     , clean_none = 5
 };
 
-enum PolarityMode {
+enum class PolarityMode {
     polarmode_pos
     , polarmode_neg
     , polarmode_rnd
     , polarmode_automatic
 };
 
-enum Restart {
-    restart_type_glue
-    , restart_type_glue_agility
-    , restart_type_geom
-    , restart_type_luby
-    , restart_type_agility
-    , restart_type_never
-    , restart_type_geom_glue_switch
+enum class Restart {
+    glue
+    , geom
+    , luby
+    , geom_glue_switch
+    , never
 };
 
 inline std::string getNameOfCleanType(ClauseCleaningTypes clauseCleaningType)
@@ -85,19 +83,19 @@ inline std::string getNameOfCleanType(ClauseCleaningTypes clauseCleaningType)
     return "";
 }
 
-enum ElimStrategy {
-    elimstrategy_heuristic
-    , elimstrategy_calculate_exactly
+enum class ElimStrategy {
+    heuristic
+    , calculate_exactly
 };
 
 inline std::string getNameOfElimStrategy(ElimStrategy strategy)
 {
     switch(strategy)
     {
-        case elimstrategy_heuristic:
+        case ElimStrategy::heuristic:
             return "heuristic";
 
-        case elimstrategy_calculate_exactly:
+        case ElimStrategy::calculate_exactly:
             return "calculate";
 
         default:
@@ -192,11 +190,6 @@ class SolverConf
         double   maxTime;
         long maxConfl;
 
-        //Agility
-        double    agilityG; ///See paper by Armin Biere on agilities
-        double    agilityLimit; ///The agility below which the agility is considered too low
-        unsigned  agilityViolationLimit;
-
         //Glues
         int       update_glues_on_prop;
         int       update_glues_on_analyze;
@@ -280,7 +273,7 @@ class SolverConf
         //Iterative Alo Scheduling
         int      simplify_at_startup; //simplify at 1st startup (only)
         int      simplify_at_every_startup; //always simplify at startup, not only at 1st startup
-        int      regularly_simplify_problem;
+        int      do_simplify_problem;
         int      full_simplify_at_startup;
         int      never_stop_search;
         uint64_t num_conflicts_of_search;

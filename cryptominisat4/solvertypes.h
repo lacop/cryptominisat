@@ -46,25 +46,19 @@ using std::string;
 inline std::string restart_type_to_string(const Restart type)
 {
     switch(type) {
-        case restart_type_glue:
+        case Restart::glue:
             return "glue-based";
 
-        case restart_type_glue_agility:
-            return "glue&agility based";
-
-        case restart_type_geom:
+        case Restart::geom:
             return "geometric";
 
-        case restart_type_luby:
+        case Restart::luby:
             return "luby";
 
-        case restart_type_agility:
-            return "agility-based";
-
-        case restart_type_never:
+        case Restart::never:
             return "never restart";
 
-        case restart_type_geom_glue_switch:
+        case Restart::geom_glue_switch:
             return "geom glue alternating";
     }
 
@@ -155,45 +149,6 @@ inline std::ostream& operator<<(std::ostream& os, const BinaryClause val)
     << " red: " << std::boolalpha << val.isRed() << std::noboolalpha;
     return os;
 }
-
-class AgilityData
-{
-    public:
-        void setup(
-            const double _agilityG
-            , const double agilityLimit
-        ) {
-            agilityG = _agilityG;
-            agility = agilityLimit;
-            assert(agilityG < 1 && agilityG > 0);
-        }
-
-        AgilityData() :
-            agilityG(-1)
-        {}
-
-        void update(const bool flipped)
-        {
-            agility *= agilityG;
-            if (flipped)
-                agility += 1.0 - agilityG;
-        }
-
-        double getAgility() const
-        {
-            return agility;
-        }
-
-        void reset(const double agilityLimit)
-        {
-            assert(agilityG > 0);
-            agility = agilityLimit;
-        }
-
-    private:
-        double agilityG;
-        double agility;
-};
 
 inline double ratio_for_stat(double a, double b)
 {

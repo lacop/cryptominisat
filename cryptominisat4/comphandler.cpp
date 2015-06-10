@@ -360,7 +360,7 @@ void CompHandler::move_decision_level_zero_vars_here(
 
         //These vars are not meant to be in the orig solver
         //so they cannot cause UNSAT
-        solver->ok = (solver->propagate().isNULL());
+        solver->ok = (solver->propagate<false>().isNULL());
         assert(solver->ok);
     }
 }
@@ -372,7 +372,7 @@ SolverConf CompHandler::configureNewSolver(
     SolverConf conf(solver->conf);
     conf.origSeed = solver->mtrand.randInt();
     if (numVars < 60) {
-        conf.regularly_simplify_problem = false;
+        conf.do_simplify_problem = false;
         conf.doStamp = false;
         conf.doCache = false;
         conf.doProbe = false;
