@@ -1018,7 +1018,7 @@ lbool Searcher::search()
                 #endif
                 hist.trailDepthHistLonger.push(trail.size()); //TODO  - trail_lim[0]
             }
-            check_blocking_restart();
+            //check_blocking_restart();
             if (!handle_conflict(confl)) {
                 dump_search_sql(myTime);
                 return l_False;
@@ -1150,16 +1150,23 @@ void Searcher::check_need_restart()
         || params.rest_type == Restart::luby
         || (params.rest_type == Restart::geom_glue_switch && params.restart_switch_value)
     ) {
-        if (params.conflictsDoneThisRestart > max_conflicts_this_restart)
+        if (params.conflictsDoneThisRestart > max_conflicts_this_restart_tmp)
             params.needToStopSearch = true;
     } else if (params.rest_type == Restart::glue
         || (params.rest_type == Restart::geom_glue_switch && !params.restart_switch_value)
     ) {
+        //Either glue is to high
         if (hist.glueHist.isvalid()
             && conf.local_glue_multiplier * hist.glueHist.avg() > hist.glueHistLT.avg()
         ) {
             params.needToStopSearch = true;
         }
+
+        //Or we are out of of limit
+        if (params.conflictsDoneThisRestart > max_conflicts_this_restart_tmp) {
+            params.needToStopSearch = true;
+        }
+
     } else {
         assert(false && "This should not happen, auto decision is make before this point");
     }
@@ -1960,7 +1967,12 @@ lbool Searcher::solve(const uint64_t _maxConfls)
     }
 
     setup_restart_print();
+
+    params.clear();
     max_conflicts_this_restart = conf.restart_first;
+    max_conflicts_this_restart_tmp = conf.restart_first;
+    set_restart_limits();
+
     assert(solver->check_order_heap_sanity());
     for(loop_num = 0
         ; !must_interrupt_asap()
@@ -1993,24 +2005,7 @@ lbool Searcher::solve(const uint64_t _maxConfls)
         params.conflictsToDo = max_confl_per_search_solve_call-stats.conflStats.numConflicts;
         status = search();
 
-        params.restart_switch_value = !params.restart_switch_value;
-        if (params.rest_type == Restart::geom
-            || (
-                params.rest_type == Restart::geom_glue_switch
-                && params.restart_switch_value //glue rest
-            )
-        ) {
-            max_conflicts_this_restart *= conf.restart_inc;
-        } else if (params.rest_type == Restart::luby) {
-            max_conflicts_this_restart = luby(conf.restart_inc, loop_num) * (double)conf.restart_first;
-        }
-
-        if (conf.verbosity >= 10) {
-            cout << "Max restart this time: " << max_conflicts_this_restart
-            << " rest type:  " << restart_type_to_string(params.rest_type)
-            << " params.restart_switch_value: " << (int)params.restart_switch_value
-            << endl;
-        }
+        set_restart_limits();
 
         if (must_abort(status)) {
             goto end;
@@ -2038,6 +2033,41 @@ lbool Searcher::solve(const uint64_t _maxConfls)
     finish_up_solve(status);
 
     return status;
+}
+
+void Searcher::set_restart_limits()
+{
+    max_conflicts_this_restart_tmp -= params.conflictsDoneThisRestart;
+    if (max_conflicts_this_restart_tmp <= 0) {
+        params.restart_switch_value = !params.restart_switch_value;
+        if (params.rest_type == Restart::geom
+            || (
+                params.rest_type == Restart::geom_glue_switch
+                && params.restart_switch_value //glue rest
+            )
+        ) {
+            max_conflicts_this_restart *= conf.restart_inc;
+        }
+
+        if (params.restart_switch_value) {
+            //Glue
+            max_conflicts_this_restart_tmp = 2*max_conflicts_this_restart;
+        } else {
+            //Geom
+            max_conflicts_this_restart_tmp = max_conflicts_this_restart;
+        }
+    }
+
+    if (params.rest_type == Restart::luby) {
+        max_conflicts_this_restart_tmp = luby(conf.restart_inc, loop_num) * (double)conf.restart_first;
+    }
+
+    if (conf.verbosity >= 10) {
+        cout << "Max restart this time: " << max_conflicts_this_restart_tmp
+        << " rest type:  " << restart_type_to_string(params.rest_type)
+        << " params.restart_switch_value: " << (int)params.restart_switch_value
+        << endl;
+    }
 }
 
 void Searcher::print_solution_varreplace_status() const
