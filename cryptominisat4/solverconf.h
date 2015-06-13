@@ -79,8 +79,6 @@ inline std::string getNameOfCleanType(ClauseCleaningTypes clauseCleaningType)
             std::exit(-1);
             //assert(false && "Unknown clause cleaning type?");
     };
-
-    return "";
 }
 
 enum class ElimStrategy {
@@ -97,12 +95,6 @@ inline std::string getNameOfElimStrategy(ElimStrategy strategy)
 
         case ElimStrategy::calculate_exactly:
             return "calculate";
-
-        default:
-            std::exit(-1);
-            //assert(false);
-
-        return "";
     }
 }
 

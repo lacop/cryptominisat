@@ -79,7 +79,7 @@ parser.add_option("--memlimit", "-m", default=1600, dest="mem_limit_in_mb",
                   type=int
                   )
 
-parser.add_option("--cnfdir", default="satcomp14", dest="cnf_dir_name",
+parser.add_option("--cnfdir", default="satcomp14", dest="cnf_dir",
                   type=str,
                   help="The list of CNF files to solve, first line the dir"
                   "[default: %default]",
@@ -98,9 +98,7 @@ parser.add_option("--solver",
                   )
 # other possibilities:
 #
-# lingeling/binary/lingeling  (it's ayv)
-# SWDiA5BY/build/swdia5by
-## glueminisat/build/glueminisat (it's glueminisat-2.2.8-build120)
+# SWDiA5BY.alt.vd.res.va2.15000.looseres.3tierC5/binary/SWDiA5BY_static
 
 # NOTE: it's a ubuntu 14.04 on AWS, with sqlite3 fully installed
 
@@ -196,9 +194,9 @@ class Server (threading.Thread):
         self.files_finished = []
         self.files = {}
 
-        fnames = open(options.cnf_dir_name, "r")
-        options.cnf_dir = fnames.next().strip()
-        logging.info("CNF dir really is %s", options.cnf_dir)
+        os.system("aws s3 cp s3://msoos-solve-data/solvers/%s . --region us-west-2" % options.cnf_dir)
+        fnames = open(options.cnf_dir, "r")
+        logging.info("CNF dir is %s", options.cnf_dir)
         for num, fname in zip(xrange(10000), fnames):
             fname = fname.strip()
             self.files[num] = ToSolve(num, fname)

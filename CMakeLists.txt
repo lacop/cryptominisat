@@ -129,8 +129,14 @@ add_cxx_flag_if_supported("-fvisibility=hidden")
 add_cxx_flag_if_supported("-Wpointer-arith")
 add_cxx_flag_if_supported("-Wformat-nonliteral")
 add_cxx_flag_if_supported("-Winit-self")
+add_cxx_flag_if_supported("-Wunreachable-code")
 add_cxx_flag("-fPIC")
 #add_cxx_flag_if_supported("-fno-exceptions")
+
+option(COVERAGE "Build with coverage check" OFF)
+if (COVERAGE)
+    add_cxx_flag("--coverage")
+endif()
 
 set(CMAKE_EXE_LINKER_FLAGS " -Wl,-O1 -Wl,--discard-all -Wl,--build-id=sha1")
 
