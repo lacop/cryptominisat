@@ -1970,6 +1970,7 @@ lbool Searcher::solve(const uint64_t _maxConfls)
     params.clear();
     max_conflicts_this_restart = conf.restart_first;
     max_conflicts_this_restart_tmp = conf.restart_first;
+    params.restart_switch_value = false;
     set_restart_limits();
 
     assert(solver->check_order_heap_sanity());
@@ -2042,18 +2043,26 @@ void Searcher::set_restart_limits()
         if (params.rest_type == Restart::geom
             || (
                 params.rest_type == Restart::geom_glue_switch
-                && params.restart_switch_value //glue rest
+                && params.restart_switch_value //geom rest
             )
         ) {
             max_conflicts_this_restart *= conf.restart_inc;
         }
 
-        if (params.restart_switch_value) {
+        if (!params.restart_switch_value) {
             //Glue
             max_conflicts_this_restart_tmp = 2*max_conflicts_this_restart;
         } else {
             //Geom
             max_conflicts_this_restart_tmp = max_conflicts_this_restart;
+        }
+
+        if (conf.verbosity >= 10) {
+            cout
+            << "Updated max_conflicts_this_restart_tmp. "
+            << "max_conflicts_this_restart: "<< max_conflicts_this_restart
+            << (params.restart_switch_value ? "geom" : "glue")
+            << endl;
         }
     }
 
@@ -2062,9 +2071,10 @@ void Searcher::set_restart_limits()
     }
 
     if (conf.verbosity >= 10) {
-        cout << "Max restart this time: " << max_conflicts_this_restart_tmp
+        cout
+        << "max_conflicts_this_restart_tmp: " << max_conflicts_this_restart_tmp
         << " rest type:  " << restart_type_to_string(params.rest_type)
-        << " params.restart_switch_value: " << (int)params.restart_switch_value
+        << " params.restart_switch_value: " << (params.restart_switch_value ? "geom" : "glue")
         << endl;
     }
 }
