@@ -1105,12 +1105,12 @@ void Searcher::check_need_restart()
         //no restart
     } else if (params.rest_type == Restart::geom
         || params.rest_type == Restart::luby
-        || (params.rest_type == Restart::geom_glue_switch && params.restart_switch_value)
+        || (params.rest_type == Restart::geom_glue_switch && params.restart_switch_value == RestartSwitch::geom)
     ) {
         if (params.conflictsDoneThisRestart > max_conflicts_this_restart_tmp)
             params.needToStopSearch = true;
     } else if (params.rest_type == Restart::glue
-        || (params.rest_type == Restart::geom_glue_switch && !params.restart_switch_value)
+        || (params.rest_type == Restart::geom_glue_switch && params.restart_switch_value == RestartSwitch::glue)
     ) {
         //Either glue is to high
         if (hist.glueHist.isvalid()
@@ -1274,7 +1274,7 @@ void Searcher::update_history_stats(size_t backtrack_level, size_t glue)
     hist.branchDepthDeltaHist.push(decisionLevel() - backtrack_level);
 
     if (params.rest_type == Restart::glue
-        || (params.rest_type == Restart::geom_glue_switch && !params.restart_switch_value)
+        || (params.rest_type == Restart::geom_glue_switch && params.restart_switch_value == RestartSwitch::glue)
     ) {
         hist.glueHist.push(glue);
         hist.glueHistLT.push(glue);
@@ -1928,7 +1928,7 @@ lbool Searcher::solve(const uint64_t _maxConfls)
     params.clear();
     max_conflicts_this_restart = conf.restart_first;
     max_conflicts_this_restart_tmp = conf.restart_first;
-    params.restart_switch_value = false;
+    params.restart_switch_value = RestartSwitch::glue;
     set_restart_limits();
 
     assert(solver->check_order_heap_sanity());
@@ -1997,21 +1997,26 @@ void Searcher::set_restart_limits()
 {
     max_conflicts_this_restart_tmp -= params.conflictsDoneThisRestart;
     if (max_conflicts_this_restart_tmp <= 0) {
-        params.restart_switch_value = !params.restart_switch_value;
+        //Switch it
+        if (params.restart_switch_value == RestartSwitch::glue) {
+            params.restart_switch_value = RestartSwitch::geom;
+        } else {
+            params.restart_switch_value = RestartSwitch::glue;
+        }
+
         if (params.rest_type == Restart::geom
             || (
                 params.rest_type == Restart::geom_glue_switch
-                && params.restart_switch_value //geom rest
+                && params.restart_switch_value == RestartSwitch::geom
             )
         ) {
             max_conflicts_this_restart *= conf.restart_inc;
         }
 
-        if (!params.restart_switch_value) {
-            //Glue
+        if (params.restart_switch_value == RestartSwitch::glue) {
             max_conflicts_this_restart_tmp = 2*max_conflicts_this_restart;
         } else {
-            //Geom
+            //geom
             max_conflicts_this_restart_tmp = max_conflicts_this_restart;
         }
 
@@ -2019,7 +2024,7 @@ void Searcher::set_restart_limits()
             cout
             << "Updated max_conflicts_this_restart_tmp. "
             << "max_conflicts_this_restart: "<< max_conflicts_this_restart
-            << (params.restart_switch_value ? "geom" : "glue")
+            << (params.restart_switch_value == RestartSwitch::geom ? "geom" : "glue")
             << endl;
         }
     }
@@ -2032,7 +2037,7 @@ void Searcher::set_restart_limits()
         cout
         << "max_conflicts_this_restart_tmp: " << max_conflicts_this_restart_tmp
         << " rest type:  " << restart_type_to_string(params.rest_type)
-        << " params.restart_switch_value: " << (params.restart_switch_value ? "geom" : "glue")
+        << " params.restart_switch_value: " << (params.restart_switch_value == RestartSwitch::geom ? "geom" : "glue")
         << endl;
     }
 }

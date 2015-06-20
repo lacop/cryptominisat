@@ -55,6 +55,10 @@ struct VariableVariance
     double avgTrailLevelVar = 0;
 };
 
+enum class RestartSwitch {
+    glue, geom
+};
+
 class Searcher : public HyperEngine
 {
     public:
@@ -364,7 +368,7 @@ class Searcher : public HyperEngine
 
             bool needToStopSearch;
             bool update;
-            bool restart_switch_value = false; //true is GEOM, false is GLUE
+            RestartSwitch restart_switch_value = RestartSwitch::glue; //true is GEOM, false is GLUE
             uint64_t conflictsDoneThisRestart;
             uint64_t conflictsToDo;
             Restart rest_type = Restart::never;
