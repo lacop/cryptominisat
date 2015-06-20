@@ -70,6 +70,7 @@ Searcher::Searcher(const SolverConf *_conf, Solver* _solver, bool* _needToInterr
     mtrand.seed(conf.origSeed);
     hist.setSize(conf.shortTermHistorySize, conf.blocking_restart_trail_hist_length);
     conf.cur_max_temp_red_cls = conf.max_temporary_learnt_clauses;
+    conf.cur_max_temp_red_cls_longerkeep = conf.max_temporary_learnt_clauses_longer;
 }
 
 Searcher::~Searcher()
@@ -386,17 +387,28 @@ void Searcher::update_clause_glue_from_analysis(Clause* cl)
     const unsigned new_glue = calc_glue_using_seen2_upper_bit_no_zero_lev(*cl);
 
     if (new_glue + 1 < cl->stats.glue) {
-        //tot_lbds = tot_lbds - c.lbd() + lbd;
-        //c.delta_lbd(c.delta_lbd() + c.lbd() - lbd);
-
-        if (new_glue <= conf.glue_must_keep_clause_if_below_or_eq && red_long_cls_is_reducedb(*cl)) {
-            num_red_cls_reducedb--;
+        if (red_long_cls_is_reducedb(*cl)) {
+            if (new_glue <= conf.glue_must_keep_clause_if_below_or_eq) {
+                num_red_cls_reducedb--;
+            } else if (new_glue <= conf.glue_must_keep_clause_longer_if_below_or_eq) {
+                num_red_cls_reducedb--;
+                num_red_cls_reducedb_longerkeep++;
+            }
+        } else if (red_long_cls_is_reducedb_longerkeep(*cl)
+            && new_glue <= conf.glue_must_keep_clause_if_below_or_eq
+        ) {
+            num_red_cls_reducedb_longerkeep--;
         }
+
+
         cl->stats.glue = new_glue;
 
         if (new_glue <= conf.protect_clause_if_imrpoved_glue_below_this_glue_for_one_turn) {
             if (red_long_cls_is_reducedb(*cl)) {
                 num_red_cls_reducedb--;
+            }
+            if (red_long_cls_is_reducedb_longerkeep(*cl)) {
+                num_red_cls_reducedb_longerkeep--;
             }
             cl->stats.ttl = 1;
         }
@@ -1752,26 +1764,48 @@ void Searcher::restore_order_heap()
 void Searcher::reduce_db_if_needed()
 {
     //Check if we should do DBcleaning
-    if (num_red_cls_reducedb > conf.cur_max_temp_red_cls) {
-        if (conf.verbosity >= 3) {
+    if (num_red_cls_reducedb > conf.cur_max_temp_red_cls
+        || num_red_cls_reducedb_longerkeep > conf.cur_max_temp_red_cls_longerkeep
+    ) {
+        if (conf.verbosity >= 2) {
             cout
             << "c "
-            << " cleaning"
+            << " cleaning: " << (num_red_cls_reducedb > conf.cur_max_temp_red_cls ? "normal" : "longer")
             << " num_irred_cls_reducedb: " << num_red_cls_reducedb
+            << " num_irred_cls_reducedb_longerkeep: " << num_red_cls_reducedb_longerkeep
             << " numConflicts : " << stats.conflStats.numConflicts
             << " SumConfl: " << sumConflicts()
             << " max_confl_per_search_solve_call:" << max_confl_per_search_solve_call
             << " Trail size: " << trail.size() << endl;
         }
-        solver->reduceDB->reduce_db_and_update_reset_stats();
+        solver->reduceDB->reduce_db_and_update_reset_stats(
+            num_red_cls_reducedb > conf.cur_max_temp_red_cls ? CleanWhich::normal : CleanWhich::longer
+        );
         if (conf.verbosity >= 3) {
             watches.print_stat();
         }
         must_consolidate_mem = true;
         watches.consolidate();
-        conf.cur_max_temp_red_cls *= conf.inc_max_temp_red_cls;
+        if (num_red_cls_reducedb > conf.cur_max_temp_red_cls) {
+            conf.cur_max_temp_red_cls *= conf.inc_max_temp_red_cls;
+        } else {
+            conf.cur_max_temp_red_cls_longerkeep *= conf.inc_max_temp_red_cls;
+        }
 
         num_red_cls_reducedb = count_num_red_cls_reducedb();
+        num_red_cls_reducedb_longerkeep = count_num_red_cls_reducedb_longerkeep();
+
+        if (conf.verbosity >= 2) {
+            cout
+            << "c AFTER "
+            << " cleaning: " << (num_red_cls_reducedb > conf.cur_max_temp_red_cls ? "normal" : "longer")
+            << " num_irred_cls_reducedb: " << num_red_cls_reducedb
+            << " num_irred_cls_reducedb_longerkeep: " << num_red_cls_reducedb_longerkeep
+            << " numConflicts : " << stats.conflStats.numConflicts
+            << " SumConfl: " << sumConflicts()
+            << " max_confl_per_search_solve_call:" << max_confl_per_search_solve_call
+            << " Trail size: " << trail.size() << endl;
+        }
     }
 }
 
@@ -1905,6 +1939,7 @@ lbool Searcher::solve(const uint64_t _maxConfls)
 
     resetStats();
     num_red_cls_reducedb = count_num_red_cls_reducedb();
+    num_red_cls_reducedb_longerkeep = count_num_red_cls_reducedb_longerkeep();
     lbool status = l_Undef;
     if (conf.burst_search_len > 0) {
         restore_order_heap();
@@ -1940,6 +1975,7 @@ lbool Searcher::solve(const uint64_t _maxConfls)
     ) {
         #ifdef SLOW_DEBUG
         assert(num_red_cls_reducedb == count_num_red_cls_reducedb());
+        assert(num_red_cls_reducedb_longerkeep == count_num_red_cls_reducedb_longerkeep());
         assert(order_heap.heap_property());
         assert(solver->check_order_heap_sanity());
         #endif
@@ -1984,6 +2020,7 @@ lbool Searcher::solve(const uint64_t _maxConfls)
 
             //TODO complete detach-reattacher cannot count num_red_cls_reducedb
             num_red_cls_reducedb = count_num_red_cls_reducedb();
+            num_red_cls_reducedb_longerkeep = count_num_red_cls_reducedb_longerkeep();
         }
     }
 

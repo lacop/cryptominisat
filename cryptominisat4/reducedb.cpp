@@ -227,7 +227,7 @@ void ReduceDB::print_best_red_clauses_if_required() const
     }
 }
 
-CleaningStats ReduceDB::reduceDB(bool lock_clauses_in)
+CleaningStats ReduceDB::reduceDB(const CleanWhich which)
 {
     const double myTime = cpuTime();
     nbReduceDB++;
@@ -237,11 +237,7 @@ CleaningStats ReduceDB::reduceDB(bool lock_clauses_in)
 
     const uint64_t sumConfl = solver->sumConflicts();
 
-    if (lock_clauses_in) {
-        lock_most_UIP_used_clauses();
-    }
-
-    move_to_never_cleaned();
+    move_to_not_cleaned(which);
     int64_t num_to_reduce = solver->longRedCls.size();
 
     //TODO maybe we chould count binary learnt clauses as well into the kept no. of clauses as other solvers do
@@ -254,16 +250,18 @@ CleaningStats ReduceDB::reduceDB(bool lock_clauses_in)
         print_best_red_clauses_if_required();
         mark_top_N_clauses(keep_num);
     }
-    move_from_never_cleaned();
+    move_from_not_cleaned();
     assert(delayed_clause_free.empty());
     cl_locked = 0;
     cl_marked = 0;
     cl_glue = 0;
     cl_ttl = 0;
     cl_locked_solver = 0;
-    remove_cl_from_array_and_count_stats(tmpStats, sumConfl);
+    remove_cl_from_array_and_count_stats(tmpStats, sumConfl, which);
     if (solver->conf.verbosity >= 2) {
-        cout << "c [DBclean] locked:" << cl_locked
+        cout << "c [DBclean] "
+        << (which == CleanWhich::normal ? "normal" : "longer")
+        << " locked:" << cl_locked
         << " marked: " << cl_marked
         << " glue: " << cl_glue
         << " ttl:" << cl_ttl
@@ -275,7 +273,11 @@ CleaningStats ReduceDB::reduceDB(bool lock_clauses_in)
     solver->watches.clear_smudged();
     for(ClOffset offset: delayed_clause_free) {
         solver->cl_alloc.clauseFree(offset);
-        solver->num_red_cls_reducedb--;
+        if (which == CleanWhich::normal) {
+            solver->num_red_cls_reducedb--;
+        } else {
+            solver->num_red_cls_reducedb_longerkeep--;
+        }
     }
     delayed_clause_free.clear();
     solver->unmark_all_red_clauses();
@@ -301,9 +303,9 @@ CleaningStats ReduceDB::reduceDB(bool lock_clauses_in)
     return tmpStats;
 }
 
-void ReduceDB::move_to_never_cleaned()
+void ReduceDB::move_to_not_cleaned(const CleanWhich which)
 {
-    assert(never_cleaned.empty());
+    assert(not_cleaned.empty());
 
     size_t i = 0;
     size_t j = 0;
@@ -312,8 +314,8 @@ void ReduceDB::move_to_never_cleaned()
         const Clause* cl = solver->cl_alloc.ptr(offset);
         assert(!cl->stats.marked_clause);
 
-        if (!cl_needs_removal(cl, offset)) {
-            never_cleaned.push_back(solver->longRedCls[i]);
+        if (!cl_needs_removal(cl, offset, which)) {
+            not_cleaned.push_back(solver->longRedCls[i]);
         } else {
             solver->longRedCls[j++] = solver->longRedCls[i];
         }
@@ -321,12 +323,12 @@ void ReduceDB::move_to_never_cleaned()
     solver->longRedCls.resize(j);
 }
 
-void ReduceDB::move_from_never_cleaned()
+void ReduceDB::move_from_not_cleaned()
 {
-    for(ClOffset off: never_cleaned) {
+    for(ClOffset off: not_cleaned) {
         solver->longRedCls.push_back(off);
     }
-    never_cleaned.clear();
+    not_cleaned.clear();
 }
 
 void ReduceDB::mark_top_N_clauses(const uint64_t keep_num)
@@ -355,46 +357,6 @@ void ReduceDB::mark_top_N_clauses(const uint64_t keep_num)
     }
 }
 
-void ReduceDB::lock_most_UIP_used_clauses()
-{
-    if (solver->conf.lock_uip_per_dbclean == 0)
-        return;
-
-    std::function<bool (const ClOffset, const ClOffset)> uipsort
-        = [&] (const ClOffset a, const ClOffset b) -> bool {
-            const Clause& a_cl = *solver->cl_alloc.ptr(a);
-            const Clause& b_cl = *solver->cl_alloc.ptr(b);
-
-            return a_cl.stats.used_for_uip_creation > b_cl.stats.used_for_uip_creation;
-    };
-    std::sort(solver->longRedCls.begin(), solver->longRedCls.end(), uipsort);
-
-    size_t locked = 0;
-    size_t skipped = 0;
-    for(size_t i = 0
-        ; i < solver->longRedCls.size() && locked < solver->conf.lock_uip_per_dbclean
-        ; i++
-    ) {
-        const ClOffset offs = solver->longRedCls[i];
-        Clause& cl = *solver->cl_alloc.ptr(offs);
-        if (!cl.stats.locked
-            && cl.stats.glue > solver->conf.glue_must_keep_clause_if_below_or_eq
-        ) {
-            cl.stats.locked = true;
-            locked++;
-            //std::cout << "Locked: " << cl << endl;
-        } else {
-            skipped++;
-            //std::cout << "skipped: " << cl << endl;
-        }
-    }
-
-    if (solver->conf.verbosity >= 2) {
-        cout << "c [DBclean] UIP"
-        << " Locked: " << locked << " skipped: " << skipped << endl;
-    }
-}
-
 #ifdef STATS_NEEDED
 bool ReduceDB::red_cl_too_young(const Clause* cl) const
 {
@@ -403,23 +365,36 @@ bool ReduceDB::red_cl_too_young(const Clause* cl) const
 }
 #endif
 
-bool ReduceDB::cl_needs_removal(const Clause* cl, const ClOffset offset) const
-{
+bool ReduceDB::cl_needs_removal(
+    const Clause* cl
+    , const ClOffset offset
+    , const CleanWhich which
+) const {
     assert(cl->red());
-    return
-         !cl->stats.locked
+    bool needed =
+         cl->stats.locked
          #ifdef STATS_NEEDED
-         && !red_cl_too_young(cl)
+         || red_cl_too_young(cl)
         #endif
-         && !cl->stats.marked_clause
-         && cl->stats.ttl == 0
-         && cl->stats.glue > solver->conf.glue_must_keep_clause_if_below_or_eq
-         && !solver->clause_locked(*cl, offset);
+         || cl->stats.marked_clause
+         || cl->stats.ttl > 0
+         || solver->clause_locked(*cl, offset);
+
+     if (needed)
+         return false;
+
+     if (which == CleanWhich::normal) {
+         return cl->stats.glue > solver->conf.glue_must_keep_clause_longer_if_below_or_eq;
+     } else {
+        return cl->stats.glue > solver->conf.glue_must_keep_clause_if_below_or_eq
+            && cl->stats.glue <= solver->conf.glue_must_keep_clause_longer_if_below_or_eq;
+     }
 }
 
 void ReduceDB::remove_cl_from_array_and_count_stats(
     CleaningStats& tmpStats
     , uint64_t sumConfl
+    , const CleanWhich which
 ) {
     size_t i, j;
     for (i = j = 0
@@ -442,7 +417,7 @@ void ReduceDB::remove_cl_from_array_and_count_stats(
             cl_locked_solver++;
         }
 
-        if (!cl_needs_removal(cl, offset)) {
+        if (!cl_needs_removal(cl, offset, which)) {
             if (cl->stats.ttl > 0) {
                 cl->stats.ttl = 0;
             }
@@ -470,7 +445,7 @@ void ReduceDB::remove_cl_from_array_and_count_stats(
     solver->longRedCls.resize(solver->longRedCls.size() - (i - j));
 }
 
-void ReduceDB::reduce_db_and_update_reset_stats(bool lock_clauses_in)
+void ReduceDB::reduce_db_and_update_reset_stats(const CleanWhich which)
 {
     ClauseUsageStats irred_cl_usage_stats = sumClauseData(solver->longIrredCls, false);
     ClauseUsageStats red_cl_usage_stats = sumClauseData(solver->longRedCls, true);
@@ -488,7 +463,7 @@ void ReduceDB::reduce_db_and_update_reset_stats(bool lock_clauses_in)
         sum_cl_usage_stats.print();
     }
 
-    CleaningStats iterCleanStat = reduceDB(lock_clauses_in);
+    CleaningStats iterCleanStat = reduceDB(which);
 
     if (solver->sqlStats) {
         solver->sqlStats->reduceDB(irred_cl_usage_stats, red_cl_usage_stats, iterCleanStat, solver);

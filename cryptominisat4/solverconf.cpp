@@ -38,7 +38,8 @@ DLL_PUBLIC SolverConf::SolverConf() :
         , do_calc_polarity_every_time(false)
 
         //Clause cleaning
-        , max_temporary_learnt_clauses(20000)
+        , max_temporary_learnt_clauses(10000)
+        , max_temporary_learnt_clauses_longer(15000)
         , protect_clause_if_imrpoved_glue_below_this_glue_for_one_turn(30)
         , clean_confl_multiplier(0.2)
         , clean_prop_multiplier(1.0)
@@ -49,9 +50,9 @@ DLL_PUBLIC SolverConf::SolverConf() :
         , maxNumRedsRatio(10)
         , clauseDecayActivity(1.0/0.999)
         , min_time_in_db_before_eligible_for_cleaning(5ULL*1000ULL)
-        , lock_uip_per_dbclean(0)
         , multiplier_perf_values_after_cl_clean(0)
-        , glue_must_keep_clause_if_below_or_eq(5)
+        , glue_must_keep_clause_if_below_or_eq(3)
+        , glue_must_keep_clause_longer_if_below_or_eq(6)
 
         //Restarting
         , restart_first(100)

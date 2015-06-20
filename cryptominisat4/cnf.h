@@ -104,8 +104,11 @@ public:
     uint32_t minNumVars;
     vector<ClOffset> longIrredCls;          ///< List of problem clauses that are larger than 2
     int64_t num_red_cls_reducedb = 0;
+    int64_t num_red_cls_reducedb_longerkeep = 0;
     bool red_long_cls_is_reducedb(const Clause& cl) const;
+    bool red_long_cls_is_reducedb_longerkeep(const Clause& cl) const;
     int64_t count_num_red_cls_reducedb() const;
+    int64_t count_num_red_cls_reducedb_longerkeep() const;
 
     vector<ClOffset> longRedCls;          ///< List of redundant clauses.
     BinTriStats binTri;
@@ -461,10 +464,23 @@ inline void CNF::renumber_outer_to_inter_lits(vector<Lit>& ps) const
     }
 }
 
-inline bool CNF::red_long_cls_is_reducedb(const Clause& cl) const
+inline bool CNF::red_long_cls_is_reducedb_longerkeep(const Clause& cl) const
 {
     assert(cl.red());
-    return cl.stats.glue > conf.glue_must_keep_clause_if_below_or_eq && !cl.stats.locked && cl.stats.ttl == 0;
+    return cl.stats.glue <= conf.glue_must_keep_clause_longer_if_below_or_eq
+        && cl.stats.glue > conf.glue_must_keep_clause_if_below_or_eq
+        && !cl.stats.locked && cl.stats.ttl == 0;
+}
+inline int64_t CNF::count_num_red_cls_reducedb_longerkeep() const
+{
+    int64_t num = 0;
+    for(ClOffset offset: longRedCls) {
+         Clause& cl = *cl_alloc.ptr(offset);
+         if (red_long_cls_is_reducedb_longerkeep(cl)) {
+             num++;
+         }
+    }
+    return num;
 }
 
 inline int64_t CNF::count_num_red_cls_reducedb() const
@@ -477,6 +493,14 @@ inline int64_t CNF::count_num_red_cls_reducedb() const
          }
     }
     return num;
+}
+
+
+inline bool CNF::red_long_cls_is_reducedb(const Clause& cl) const
+{
+    assert(cl.red());
+    return cl.stats.glue > conf.glue_must_keep_clause_longer_if_below_or_eq
+        && !cl.stats.locked && cl.stats.ttl == 0;
 }
 
 inline void CNF::check_no_removed_or_freed_cl_in_watch() const

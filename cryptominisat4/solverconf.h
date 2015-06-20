@@ -126,7 +126,9 @@ class SolverConf
 
         //Clause cleaning
         unsigned  max_temporary_learnt_clauses;
+        unsigned  max_temporary_learnt_clauses_longer;
         unsigned  cur_max_temp_red_cls;
+        unsigned  cur_max_temp_red_cls_longerkeep;
         unsigned protect_clause_if_imrpoved_glue_below_this_glue_for_one_turn;
         double    clean_confl_multiplier;
         double    clean_prop_multiplier;
@@ -138,9 +140,9 @@ class SolverConf
         double    maxNumRedsRatio; ///<Number of red clauses must not be more than red*maxNumRedsRatio
         double    clauseDecayActivity;
         unsigned  min_time_in_db_before_eligible_for_cleaning;
-        size_t   lock_uip_per_dbclean;
         double   multiplier_perf_values_after_cl_clean;
         unsigned glue_must_keep_clause_if_below_or_eq;
+        unsigned glue_must_keep_clause_longer_if_below_or_eq;
 
         //For restarting
         unsigned    restart_first;      ///<The initial restart limit.                                                                (default 100)

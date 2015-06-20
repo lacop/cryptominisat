@@ -3433,6 +3433,7 @@ void Solver::reconfigure(int val)
         case 1: {
             conf.max_temporary_learnt_clauses = 20000;
             num_red_cls_reducedb = count_num_red_cls_reducedb();
+            num_red_cls_reducedb_longerkeep = count_num_red_cls_reducedb_longerkeep();
             break;
         }
 
@@ -3452,6 +3453,7 @@ void Solver::reconfigure(int val)
             conf.inc_max_temp_red_cls = 1.01;
             conf.max_temporary_learnt_clauses = 10000;
             num_red_cls_reducedb = count_num_red_cls_reducedb();
+            num_red_cls_reducedb_longerkeep = count_num_red_cls_reducedb_longerkeep();
             break;
         }
 

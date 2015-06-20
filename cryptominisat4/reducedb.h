@@ -29,13 +29,18 @@
 
 namespace CMSat {
 
+enum class CleanWhich
+{
+    normal, longer
+};
+
 class Solver;
 
 class ReduceDB
 {
 public:
     ReduceDB(Solver* solver);
-    void reduce_db_and_update_reset_stats(bool lock_clauses_in = true);
+    void reduce_db_and_update_reset_stats(const CleanWhich which);
     const CleaningStats& get_cleaning_stats() const;
 
     uint64_t get_nbReduceDB() const
@@ -49,9 +54,9 @@ private:
     vector<ClOffset> delayed_clause_free;
     CleaningStats cleaningStats;
 
-    vector<ClOffset> never_cleaned;
-    void move_to_never_cleaned();
-    void move_from_never_cleaned();
+    vector<ClOffset> not_cleaned;
+    void move_to_not_cleaned(const CleanWhich which);
+    void move_from_not_cleaned();
 
     unsigned cl_locked;
     unsigned cl_marked;
@@ -63,14 +68,18 @@ private:
     bool red_cl_too_young(const Clause* cl) const;
     void clear_clauses_stats(vector<ClOffset>& clauseset);
 
-    bool cl_needs_removal(const Clause* cl, const ClOffset offset) const;
+    bool cl_needs_removal(
+        const Clause* cl
+        , const ClOffset offset
+        , const CleanWhich which
+    ) const;
     void remove_cl_from_array_and_count_stats(
         CleaningStats& tmpStats
         , uint64_t sumConflicts
+        , const CleanWhich which
     );
 
-    CleaningStats reduceDB(bool lock_clauses_in);
-    void lock_most_UIP_used_clauses();
+    CleaningStats reduceDB(const CleanWhich which);
 
     void sort_red_cls(ClauseCleaningTypes clean_type);
     void mark_top_N_clauses(const uint64_t keep_num);
