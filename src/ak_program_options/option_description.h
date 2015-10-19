@@ -30,46 +30,56 @@
 #define OPTION_DESCRIPTION_H_INCLUDED
 
 #include <assert.h>
+#include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
-#include <iostream>
 
 #include "errors.h"
-#include "akpo_getopt.h"
+#include "scan_arguments.h"
 #include "value_semantic.h"
 
 namespace ak_program_options {
 
+#define OPTION_DESCRIPTION_HEADER "OD"
+
     class option_description {
     private:
+#if USE_OD_DEBUGGING
+        //  for validity check
+        char *hd = OPTION_DESCRIPTION_HEADER;
+#endif
         option_description& set_name(const char* name);
 
         std::string m_short_name = "";
         std::string m_long_name = "";
         std::string m_description = "";
+        //  id is either an ASCII char or a unique index derived from a pointer
         int m_id;
 
-        const value_semantic *m_value_semantic;
+        std::shared_ptr<value_semantic> m_value_semantic;
 
     public:
-        option_description() {
-            m_value_semantic = NO_VALUE;
-            m_id = (int)((size_t)this);
-        };
-        
-        ~option_description() {
-                        if (m_value_semantic) {
-                delete m_value_semantic;
-            }
-        }
+        option_description();
+                
+        virtual ~option_description();
 
         int id() const { 
+            valid();
             if (m_short_name.size() == 2) {
                 return (int)m_short_name[1];
             }
 
+            //  add 256 to avoid clashes with ASCII chars
             return m_id + 256; 
         };
+
+        bool valid() const {
+#if USE_OD_DEBUGGING
+            assert(!strcmp(OPTION_DESCRIPTION_HEADER, hd));
+#endif
+            return true;
+        }
 
         /*
         The 'name' parameter is interpreted by the following rules:
@@ -78,19 +88,18 @@ namespace ak_program_options {
         after -- short name.
         */
         option_description(const char* name,
-            const value_semantic* s);
+            value_semantic* s);
 
-        /** Initializes the class with the passed data.
-        */
+        /// Initializes the class with the passed data.
         option_description(const char* name,
-            const value_semantic* s,
+            value_semantic* s,
             const char* description);
 
         // Explanation of this option
         const std::string& description() const;
 
         /// Semantic of option's value
-        value_semantic *semantic() const;
+        std::shared_ptr<value_semantic> semantic() const;
 
         /// Return the name
         std::string name() const;
@@ -98,16 +107,11 @@ namespace ak_program_options {
         /// Returns the option name, formatted suitably for usage message. 
         std::string format_name() const;
 
-        /** Returns the parameter name and properties, formatted suitably for
-        usage message. */
+        /// Returns the parameter name and properties, formatted suitably for
+        /// usage message.
         std::string format_parameter() const;
 
-        /** return short option flag for getopt() */
-        std::string short_option() const;
-
-        /** return long option struct for getopt_log() */
-        option *long_option() const;
-
+        long_option_struct *long_option() const;
     };
 }
 
