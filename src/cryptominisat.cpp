@@ -427,6 +427,13 @@ DLL_PUBLIC void SATSolver::set_verbosity(unsigned verbosity)
   }
 }
 
+DLL_PUBLIC bool SATSolver::add_branch_order(const vector<Lit>& lits)
+{
+    assert(data->solvers.size() == 1);
+
+    return data->solvers[0]->add_branch_order(lits);
+}
+
 DLL_PUBLIC bool SATSolver::add_clause(const vector< Lit >& lits)
 {
     if (data->log) {

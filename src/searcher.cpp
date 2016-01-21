@@ -2057,14 +2057,24 @@ bool Searcher::pickPolarity(const uint32_t var)
 
 Lit Searcher::pickBranchLit()
 {
-    #ifdef VERBOSE_DEBUG
-    cout << "picking decision variable, dec. level: " << decisionLevel() << " ";
-    #endif
+    //#ifdef VERBOSE_DEBUG
+    cout << "c picking decision variable, dec. level: " << decisionLevel();
+    //#endif
 
     Lit next = lit_Undef;
 
+    // Branch order decision, if there are any left
+    for (unsigned int i = decisionLevel(); i < branch_order.size(); ++i) {
+        uint32_t next_var = branch_order[i][0].var(); // TODO pick between groups using other heuristics
+        if (value(next_var) == l_Undef &&
+            solver->varData[next_var].removed == Removed::none) {
+            next = Lit(next_var, !pickPolarity(next_var));
+            break;
+        }
+    }
+
     // Random decision:
-    if (conf.random_var_freq > 0) {
+    if (next == lit_Undef && conf.random_var_freq > 0) {
         double rand = mtrand.randDblExc();
         double frq = conf.random_var_freq;
         if (rand < frq && !order_heap.empty()) {
@@ -2145,6 +2155,9 @@ Lit Searcher::pickBranchLit()
     if (next != lit_Undef) {
         assert(solver->varData[next.var()].removed == Removed::none);
     }
+
+    cout << " picked: " << next.var() << endl;
+
     return next;
 }
 
@@ -3143,6 +3156,15 @@ void Searcher::cancelUntil(uint32_t level)
     << " sublevel: " << trail.size()-1
     << endl;
     #endif
+}
+
+bool Searcher::add_branch_order(const vector<Lit> &lits)
+{
+    vector<Lit> group(lits);
+    branch_order.push_back(group);
+    if (group.size() != 1)
+        return false; // TODO support larger groups
+    return true; // TODO verify no variable is mentioned before
 }
 
 #ifdef USE_GAUSS

@@ -43,6 +43,7 @@ namespace CMSat {
         unsigned nVars() const;
         bool add_clause(const std::vector<Lit>& lits);
         bool add_xor_clause(const std::vector<unsigned>& vars, bool rhs);
+        bool add_branch_order(const std::vector<Lit>& lits);
         void new_var();
         void new_vars(const size_t n);
         lbool solve(const std::vector<Lit>* assumptions = 0);

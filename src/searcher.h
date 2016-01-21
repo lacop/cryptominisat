@@ -186,6 +186,7 @@ class Searcher : public HyperEngine
         uint64_t loop_num;
         MiniSatRnd mtrand; ///< random number generator
 
+        bool add_branch_order(const vector<Lit>& lits);
 
         vector<lbool>  model;
         vector<Lit>   conflict;     ///<If problem is unsatisfiable (possibly under assumptions), this vector represent the final conflict clause expressed in the assumptions.
@@ -494,6 +495,8 @@ class Searcher : public HyperEngine
         double   startTime; ///<When solve() was started
         SearchStats stats;
         double   var_decay;
+
+        vector<vector<Lit>> branch_order;
 };
 
 inline uint32_t Searcher::abstractLevel(const uint32_t x) const

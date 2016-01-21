@@ -50,6 +50,7 @@ class DimacsParser
         bool readClause(C& in);
         bool parse_and_add_clause(C& in);
         bool parse_and_add_xor_clause(C& in);
+        bool parse_and_add_branch_order(C& in);
         bool match(C& in, const char* str);
         bool printHeader(C& in);
         bool parseComments(C& in, const std::string& str);
@@ -74,6 +75,8 @@ class DimacsParser
 
         size_t norm_clauses_added = 0;
         size_t xor_clauses_added = 0;
+        size_t branch_order_groups_added = 0;
+        size_t branch_order_vars_added = 0;
 };
 
 #include <sstream>
@@ -364,6 +367,27 @@ bool DimacsParser<C>::parse_and_add_xor_clause(C& in)
 }
 
 template<class C>
+bool DimacsParser<C>::parse_and_add_branch_order(C& in)
+{
+    lits.clear();
+    if (!readClause(in)) {
+        return false;
+    }
+    if (!in.skipEOL(lineNum)) {
+        return false;
+    }
+    lineNum++;
+    if (lits.empty()) {
+        return true;
+    }
+
+    branch_order_groups_added++;
+    branch_order_vars_added += lits.size();
+
+    return solver->add_branch_order(lits);
+}
+
+template<class C>
 bool DimacsParser<C>::parse_DIMACS_main(C& in)
 {
     std::string str;
@@ -390,6 +414,12 @@ bool DimacsParser<C>::parse_DIMACS_main(C& in)
         case 'x':
             ++in;
             if (!parse_and_add_xor_clause(in)) {
+                return false;
+            }
+            break;
+        case 'b':
+            ++in;
+            if (!parse_and_add_branch_order(in)) {
                 return false;
             }
             break;
@@ -428,7 +458,8 @@ bool DimacsParser<C>::parse_DIMACS(T input_stream)
         cout
         << "c -- clauses added: " << norm_clauses_added << endl
         << "c -- xor clauses added: " << xor_clauses_added << endl
-        << "c -- vars added " << (solver->nVars() - origNumVars)
+        << "c -- vars added " << (solver->nVars() - origNumVars) << endl
+        << "c -- branching order added " << branch_order_vars_added << " vars in " << branch_order_groups_added << " groups"
         << endl;
     }
 
