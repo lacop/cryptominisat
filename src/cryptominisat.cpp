@@ -22,19 +22,14 @@
 #include "constants.h"
 #include "cryptominisat4/cryptominisat.h"
 #include "solver.h"
-#include "drup.h"
+#include "drat.h"
 #include "shareddata.h"
 #include <fstream>
 
-#ifdef USE_PTHREADS
 #include <thread>
 #include <mutex>
+#include <atomic>
 using std::thread;
-using std::mutex;
-#else
-#include "nomutex.h"
-#endif
-
 
 #define CACHE_SIZE 10ULL*1000ULL*1000UL
 
@@ -44,7 +39,7 @@ static bool print_thread_start_and_finish = false;
 
 namespace CMSat {
     struct CMSatPrivateData {
-        explicit CMSatPrivateData(bool* _must_interrupt) {
+        explicit CMSatPrivateData(std::atomic<bool>* _must_interrupt) {
             cls = 0;
             vars_to_add = 0;
             must_interrupt = _must_interrupt;
@@ -69,8 +64,7 @@ namespace CMSat {
         vector<Solver*> solvers;
         SharedData *shared_data;
         int which_solved;
-        bool* must_interrupt;
-        bool must_interrupt_needs_free = false;
+        std::atomic<bool>* must_interrupt;
         unsigned cls;
         unsigned vars_to_add;
         vector<Lit> cls_lits;
@@ -106,14 +100,12 @@ struct DataForThread
     lbool* ret;
 };
 
-DLL_PUBLIC SATSolver::SATSolver(void* config, bool* interrupt_asap)
+DLL_PUBLIC SATSolver::SATSolver(
+    void* config
+    , std::atomic<bool>* interrupt_asap
+    )
 {
-    if (interrupt_asap == NULL) {
-        data = new CMSatPrivateData(new bool);
-        data->must_interrupt_needs_free = true;
-    } else {
-        data = new CMSatPrivateData(interrupt_asap);
-    }
+    data = new CMSatPrivateData(new std::atomic<bool>(false));
 
     if (config && ((SolverConf*) config)->verbosity >= 2) {
         print_thread_start_and_finish = true;
@@ -126,9 +118,7 @@ DLL_PUBLIC SATSolver::~SATSolver()
     for(Solver* this_s: data->solvers) {
         delete this_s;
     }
-    if (data->must_interrupt_needs_free) {
-        delete data->must_interrupt;
-    }
+    delete data->must_interrupt;
     delete data;
 }
 
@@ -252,7 +242,7 @@ void update_config(SolverConf& conf, unsigned thread_num)
     }
 }
 
-DLL_PUBLIC void SATSolver::set_num_threads(const unsigned num)
+DLL_PUBLIC void SATSolver::set_num_threads(unsigned num)
 {
     if (num <= 0) {
         std::cerr << "ERROR: Number of threads must be at least 1" << endl;
@@ -262,8 +252,8 @@ DLL_PUBLIC void SATSolver::set_num_threads(const unsigned num)
         return;
     }
 
-    if (data->solvers[0]->drup->enabled()) {
-        std::cerr << "ERROR: DRUP cannot be used in multi-threaded mode" << endl;
+    if (data->solvers[0]->drat->enabled()) {
+        std::cerr << "ERROR: DRAT cannot be used in multi-threaded mode" << endl;
         exit(-1);
     }
 
@@ -352,7 +342,6 @@ struct OneThreadAddCls
     const size_t tid;
 };
 
-#ifdef USE_PTHREADS
 static bool actually_add_clauses_to_threads(CMSatPrivateData* data)
 {
     DataForThread data_for_thread(data);
@@ -371,7 +360,6 @@ static bool actually_add_clauses_to_threads(CMSatPrivateData* data)
 
     return ret;
 }
-#endif
 
 DLL_PUBLIC void SATSolver::set_max_confl(int64_t max_confl)
 {
@@ -442,7 +430,6 @@ DLL_PUBLIC bool SATSolver::add_clause(const vector< Lit >& lits)
 
     bool ret = true;
     if (data->solvers.size() > 1) {
-        #ifdef USE_PTHREADS
         if (data->cls_lits.size() + lits.size() + 1 > CACHE_SIZE) {
             ret = actually_add_clauses_to_threads(data);
         }
@@ -451,10 +438,6 @@ DLL_PUBLIC bool SATSolver::add_clause(const vector< Lit >& lits)
         for(Lit lit: lits) {
             data->cls_lits.push_back(lit);
         }
-        #else
-        assert(false);
-        exit(-1);
-        #endif
     } else {
         data->solvers[0]->new_vars(data->vars_to_add);
         data->vars_to_add = 0;
@@ -491,7 +474,6 @@ DLL_PUBLIC bool SATSolver::add_xor_clause(const std::vector<unsigned>& vars, boo
 
     bool ret = true;
     if (data->solvers.size() > 1) {
-        #ifdef USE_PTHREADS
         if (data->cls_lits.size() + vars.size() + 1 > CACHE_SIZE) {
             ret = actually_add_clauses_to_threads(data);
         }
@@ -501,10 +483,6 @@ DLL_PUBLIC bool SATSolver::add_xor_clause(const std::vector<unsigned>& vars, boo
         for(uint32_t var: vars) {
             data->cls_lits.push_back(Lit(var, false));
         }
-        #else
-        assert(false);
-        exit(-1);
-        #endif
     } else {
         data->solvers[0]->new_vars(data->vars_to_add);
         data->vars_to_add = 0;
@@ -565,7 +543,7 @@ struct OneThreadSolve
 DLL_PUBLIC lbool SATSolver::solve(const vector< Lit >* assumptions)
 {
     //Reset the interrupt signal if it was set
-    *(data->must_interrupt) = false;
+    data->must_interrupt->store(false, std::memory_order_relaxed);
 
     if (data->log) {
         (*data->log) << "c Solver::solve( ";
@@ -584,7 +562,6 @@ DLL_PUBLIC lbool SATSolver::solve(const vector< Lit >* assumptions)
         return ret;
     }
 
-    #ifdef USE_PTHREADS
     //Multi-thread from now on.
     DataForThread data_for_thread(data, assumptions);
     std::vector<std::thread> thds;
@@ -599,20 +576,14 @@ DLL_PUBLIC lbool SATSolver::solve(const vector< Lit >* assumptions)
     }
     lbool real_ret = *data_for_thread.ret;
 
-    for(size_t i = 0; i < data->solvers.size(); i++) {
-        data_for_thread.solvers[i]->unset_must_interrupt_asap();
-    }
+    //This does it for all of them, there is only one must-interrupt
+    data_for_thread.solvers[0]->unset_must_interrupt_asap();
 
     //clear what has been added
     data->cls_lits.clear();
     data->vars_to_add = 0;
     data->okay = data->solvers[*data_for_thread.which_solved]->okay();
     return real_ret;
-    #else
-    assert(false);
-    exit(-1);
-    return l_Undef;
-    #endif
 }
 
 DLL_PUBLIC const vector< lbool >& SATSolver::get_model() const
@@ -682,23 +653,23 @@ DLL_PUBLIC void SATSolver::print_stats() const
     data->solvers[data->which_solved]->print_stats(cpu_time);
 }
 
-DLL_PUBLIC void SATSolver::set_drup(std::ostream* os)
+DLL_PUBLIC void SATSolver::set_drat(std::ostream* os)
 {
     if (data->solvers.size() > 1) {
-        std::cerr << "ERROR: DRUP cannot be used in multi-threaded mode" << endl;
+        std::cerr << "ERROR: DRAT cannot be used in multi-threaded mode" << endl;
         exit(-1);
     }
-    DrupFile* drup = new DrupFile();
-    drup->setFile(os);
-    if (data->solvers[0]->drup)
-        delete data->solvers[0]->drup;
+    DratFile* drat = new DratFile();
+    drat->setFile(os);
+    if (data->solvers[0]->drat)
+        delete data->solvers[0]->drat;
 
-    data->solvers[0]->drup = drup;
+    data->solvers[0]->drat = drat;
 }
 
 DLL_PUBLIC void SATSolver::interrupt_asap()
 {
-    *(data->must_interrupt) = true;
+    data->must_interrupt->store(true, std::memory_order_relaxed);
 }
 
 DLL_PUBLIC void SATSolver::open_file_and_dump_irred_clauses(std::string fname) const

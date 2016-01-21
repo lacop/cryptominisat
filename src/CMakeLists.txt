@@ -103,8 +103,6 @@ add_library(temp_lib_norm OBJECT
 )
 
 add_library(temp_lib_ipasir OBJECT
-    ${cryptoms_lib_files}
-    cryptominisat.cpp
     ipasir.cpp
 )
 
@@ -139,6 +137,7 @@ if (ALSO_BUILD_STATIC_LIB)
     add_library(libcryptominisat4_ipasir_static STATIC ${cms_lib_objects_ipasir})
     target_link_libraries(libcryptominisat4_ipasir_static LINK_INTERFACE_LIBRARIES
         ${cryptoms_lib_link_libs}
+        libcryptominisat4_static
     )
     set_target_properties(libcryptominisat4_ipasir_static PROPERTIES
         OUTPUT_NAME cryptominisat4ipasir
@@ -162,6 +161,7 @@ set_target_properties(libcryptominisat4 PROPERTIES
 add_library(libcryptominisat4ipasir SHARED ${cms_lib_objects_ipasir})
 target_link_libraries(libcryptominisat4ipasir
     LINK_PUBLIC ${cryptoms_lib_link_libs}
+    libcryptominisat4
 )
 set_target_properties(libcryptominisat4ipasir PROPERTIES
     OUTPUT_NAME cryptominisat4ipasir
@@ -214,6 +214,13 @@ endif()
 if (NOT ONLY_SIMPLE)
     add_executable(cryptominisat4
         main.cpp
+        main_exe.cpp
+        signalcode.cpp
+    )
+    add_executable(cups4
+        main.cpp
+        signalcode.cpp
+        cups.cpp
     )
 endif()
 add_executable(cryptominisat4_simple
@@ -224,6 +231,9 @@ if (STATICCOMPILE)
     if (NOT ONLY_SIMPLE)
         set_target_properties(cryptominisat4 PROPERTIES LINK_SEARCH_END_STATIC 1)
         set_target_properties(cryptominisat4 PROPERTIES LINK_SEARCH_START_STATIC 0)
+
+        set_target_properties(cups4 PROPERTIES LINK_SEARCH_END_STATIC 1)
+        set_target_properties(cups4 PROPERTIES LINK_SEARCH_START_STATIC 0)
     endif()
     set_target_properties(cryptominisat4_simple PROPERTIES LINK_SEARCH_END_STATIC 1)
     set_target_properties(cryptominisat4_simple PROPERTIES LINK_SEARCH_START_STATIC 0)
@@ -241,6 +251,9 @@ ENDIF()
 if (NOT ONLY_SIMPLE)
     set_target_properties(cryptominisat4 PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
     set_target_properties(cryptominisat4 PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
+
+    set_target_properties(cups4 PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
+    set_target_properties(cups4 PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
 endif()
 set_target_properties(cryptominisat4_simple PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 set_target_properties(cryptominisat4_simple PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
@@ -254,6 +267,16 @@ if (NOT ONLY_SIMPLE)
         RUNTIME DESTINATION bin
     )
     SET(CPACK_PACKAGE_EXECUTABLES "cryptominisat4")
+
+    target_link_libraries(cups4
+        ${cryptoms_exec_link_libs}
+        rt
+    )
+    install(TARGETS cups4
+        EXPORT ${CRYPTOMINISAT4_EXPORT_NAME}
+        RUNTIME DESTINATION bin
+    )
+    SET(CPACK_PACKAGE_EXECUTABLES "cups4")
 endif()
 
 target_link_libraries(cryptominisat4_simple

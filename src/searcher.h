@@ -60,7 +60,7 @@ struct VariableVariance
 class Searcher : public HyperEngine
 {
     public:
-        Searcher(const SolverConf* _conf, Solver* solver, bool* _needToInterrupt);
+        Searcher(const SolverConf* _conf, Solver* solver, std::atomic<bool>* _must_interrupt_inter);
         virtual ~Searcher();
 
         //History
@@ -176,7 +176,6 @@ class Searcher : public HyperEngine
             , const unsigned upper_level_iteration_num
         );
         void finish_up_solve(lbool status);
-        void setup_restart_print();
         void reduce_db_if_needed();
         void clean_clauses_if_needed();
         lbool perform_scc_and_varreplace_if_needed();
@@ -200,8 +199,8 @@ class Searcher : public HyperEngine
         ///////////////////////////////
         // Stats
         //Restart print status
-        uint64_t lastRestartPrint;
-        uint64_t lastRestartPrintHeader;
+        uint64_t lastRestartPrint = 0;
+        uint64_t lastRestartPrintHeader = 0;
         void     print_restart_stat();
         void     print_iteration_solving_stats();
         void     print_restart_header() const;
@@ -349,7 +348,7 @@ class Searcher : public HyperEngine
         );
         void update_clause_glue_from_analysis(Clause* cl);
         void minimize_learnt_clause();
-        void mimimize_learnt_clause_more_maybe();
+        void mimimize_learnt_clause_more_maybe(const uint32_t glue);
         void print_fully_minimized_learnt_clause() const;
         size_t find_backtrack_level_of_learnt();
         void bump_var_activities_based_on_implied_by_learnts(const uint32_t glue);

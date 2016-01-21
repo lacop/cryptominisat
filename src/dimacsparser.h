@@ -27,6 +27,8 @@ THE SOFTWARE.
 #include <string.h>
 #include "streambuffer.h"
 #include "cryptominisat4/cryptominisat.h"
+#include <cstdlib>
+#include <cmath>
 
 #ifdef USE_ZLIB
 #include <zlib.h>
@@ -44,6 +46,9 @@ class DimacsParser
 
         template <class T> bool parse_DIMACS(T input_stream);
         uint64_t max_var = std::numeric_limits<uint64_t>::max();
+        vector<uint32_t> independent_vars;
+        const std::string dimacs_spec = "http://www.satcompetition.org/2009/format-benchmarks2009.html";
+        const std::string please_read_dimacs = "\nPlease read DIMACS specification at http://www.satcompetition.org/2009/format-benchmarks2009.html";
 
     private:
         bool parse_DIMACS_main(C& in);
@@ -57,6 +62,7 @@ class DimacsParser
         std::string stringify(uint32_t x) const;
         bool parseSolveComment(C& in);
         void write_solution_to_debuglib_file(const lbool ret) const;
+        bool parseIndependentSet(C& in);
 
 
         SATSolver* solver;
@@ -124,7 +130,7 @@ bool DimacsParser<C>::readClause(C& in)
             break;
         }
 
-        var = abs(parsed_lit)-1;
+        var = std::abs(parsed_lit)-1;
 
         if (var > max_var) {
             std::cerr
@@ -132,6 +138,7 @@ bool DimacsParser<C>::readClause(C& in)
             << "Variable requested is too large for DIMACS parser parameter: "
             << var << endl
             << "--> At line " << lineNum+1
+            << please_read_dimacs
             << endl;
             return false;
         }
@@ -141,6 +148,7 @@ bool DimacsParser<C>::readClause(C& in)
             << "ERROR! "
             << "Variable requested is far too large: " << var << endl
             << "--> At line " << lineNum+1
+            << please_read_dimacs
             << endl;
             return false;
         }
@@ -153,7 +161,9 @@ bool DimacsParser<C>::readClause(C& in)
             std::cerr
             << "ERROR! "
             << "After each literal there must be an empty space!"
-            << "--> At line " << lineNum+1 << endl
+            << "--> At line " << lineNum+1
+            << please_read_dimacs
+            << endl
             << endl;
             return false;
         }
@@ -203,6 +213,7 @@ bool DimacsParser<C>::printHeader(C& in)
         std::cerr
         << "PARSE ERROR! Unexpected char: '" << *in
         << "' in the header, at line " << lineNum+1
+        << please_read_dimacs
         << endl;
         return false;
     }
@@ -309,6 +320,10 @@ bool DimacsParser<C>::parseComments(C& in, const std::string& str)
 
         if (verbosity >= 6) {
             cout << "c Parsed Solver::new_vars( " << n << " )" << endl;
+        }
+    } else if (str == "ind") {
+        if (!parseIndependentSet(in)) {
+            return false;
         }
     } else {
         if (verbosity >= 6) {
@@ -426,7 +441,8 @@ bool DimacsParser<C>::parse_DIMACS_main(C& in)
         case '\n':
             std::cerr
             << "c WARNING: Empty line at line number " << lineNum+1
-            << " -- this is not part of the DIMACS specifications. Ignoring."
+            << " -- this is not part of the DIMACS specifications ("
+            << dimacs_spec << "). Ignoring."
             << endl;
             in.skipLine();
             lineNum++;
@@ -463,6 +479,23 @@ bool DimacsParser<C>::parse_DIMACS(T input_stream)
         << endl;
     }
 
+    return true;
+}
+
+template <class C>
+bool DimacsParser<C>::parseIndependentSet(C& in)
+{
+    int32_t parsed_lit;
+    for (;;) {
+        if (!in.parseInt(parsed_lit, lineNum)) {
+            return false;
+        }
+        if (parsed_lit == 0) {
+            break;
+        }
+        uint32_t var = std::abs(parsed_lit) - 1;
+        independent_vars.push_back(var);
+    }
     return true;
 }
 

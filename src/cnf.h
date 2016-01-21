@@ -22,6 +22,8 @@
 #ifndef __CNF_H__
 #define __CNF_H__
 
+#include <atomic>
+
 #include "constants.h"
 #include "vardata.h"
 #include "propby.h"
@@ -30,7 +32,7 @@
 #include "solvertypes.h"
 #include "implcache.h"
 #include "watcharray.h"
-#include "drup.h"
+#include "drat.h"
 #include "clauseallocator.h"
 #include "varupdatehelper.h"
 #include "simplefile.h"
@@ -67,18 +69,19 @@ public:
     size_t mem_used_renumberer() const;
     size_t mem_used() const;
 
-    CNF(const SolverConf *_conf, bool* _needToInterrupt)
+    CNF(const SolverConf *_conf, std::atomic<bool>* _must_interrupt_inter)
     {
         if (_conf != NULL) {
             conf = *_conf;
         }
-        drup = new Drup();
-        needToInterrupt = _needToInterrupt;
+        drat = new Drat();
+        assert(_must_interrupt_inter != NULL);
+        must_interrupt_inter = _must_interrupt_inter;
     }
 
     virtual ~CNF()
     {
-        delete drup;
+        delete drat;
     }
 
     ClauseAllocator cl_alloc;
@@ -93,7 +96,7 @@ public:
     int64_t num_red_cls_reducedb = 0;
     bool red_long_cls_is_reducedb(const Clause& cl) const;
     int64_t count_num_red_cls_reducedb() const;
-    Drup* drup;
+    Drat* drat;
 
     //Clauses
     vector<ClOffset> longIrredCls;
@@ -101,6 +104,7 @@ public:
     vector<Xor> xorclauses;
     BinTriStats binTri;
     LitStats litStats;
+    int64_t clauseID = 2;
 
     //Temporaries
     vector<uint16_t> seen;
@@ -124,22 +128,23 @@ public:
 
     bool must_interrupt_asap() const
     {
-        return *needToInterrupt;
+        std::atomic_thread_fence(std::memory_order_acquire);
+        return *must_interrupt_inter;
     }
 
     void set_must_interrupt_asap()
     {
-        *needToInterrupt = true;
+        must_interrupt_inter->store(true, std::memory_order_relaxed);
     }
 
     void unset_must_interrupt_asap()
     {
-        *needToInterrupt = false;
+        must_interrupt_inter->store(false, std::memory_order_relaxed);
     }
 
-    bool* get_must_interrupt_asap_ptr()
+    std::atomic<bool>* get_must_interrupt_inter_asap_ptr()
     {
-        return needToInterrupt;
+        return must_interrupt_inter;
     }
 
     bool clause_locked(const Clause& c, const ClOffset offset) const;
@@ -228,6 +233,7 @@ public:
     void clean_occur_from_removed_clauses();
     void clean_occur_from_removed_clauses_only_smudged();
     void clean_occur_from_idx_types_only_smudged();
+    void clean_occur_from_idx(const Lit lit);
     void clear_one_occur_from_removed_clauses(watch_subarray w);
     bool no_marked_clauses() const;
     void check_no_removed_or_freed_cl_in_watch() const;
@@ -262,7 +268,7 @@ protected:
     void load_state(SimpleInFile& f);
 
 private:
-    bool *needToInterrupt; ///<Interrupt cleanly ASAP if true
+    std::atomic<bool> *must_interrupt_inter; ///<Interrupt cleanly ASAP if true
     void enlarge_minimal_datastructs(size_t n = 1);
     void enlarge_nonminimial_datastructs(size_t n = 1);
     void swapVars(const uint32_t which, const int off_by = 0);
@@ -389,17 +395,22 @@ inline bool CNF::no_marked_clauses() const
 inline void CNF::clean_occur_from_idx_types_only_smudged()
 {
     for(const Lit lit: watches.get_smudged_list()) {
-        watch_subarray ws = watches[lit];
-        watch_subarray::iterator i = ws.begin();
-        watch_subarray::iterator j = ws.begin();
-        for(watch_subarray::const_iterator end = ws.end(); i < end; i++) {
-            if (!i->isIdx()) {
-                *j++ = *i;
-            }
-        }
-        ws.shrink(i-j);
+        clean_occur_from_idx(lit);
     }
     watches.clear_smudged();
+}
+
+inline void CNF::clean_occur_from_idx(const Lit lit)
+{
+    watch_subarray ws = watches[lit];
+    watch_subarray::iterator i = ws.begin();
+    watch_subarray::iterator j = ws.begin();
+    for(watch_subarray::const_iterator end = ws.end(); i < end; i++) {
+        if (!i->isIdx()) {
+            *j++ = *i;
+        }
+    }
+    ws.shrink(i-j);
 }
 
 inline bool CNF::clause_locked(const Clause& c, const ClOffset offset) const

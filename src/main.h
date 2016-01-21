@@ -37,23 +37,42 @@ using std::vector;
 namespace po = boost::program_options;
 using namespace CMSat;
 
+struct SATCount {
+    uint32_t hashCount = 0;
+    uint32_t cellSolCount = 0;
+};
+
 class Main
 {
     public:
         Main(int argc, char** argv);
+        ~Main()
+        {
+            if (dratf) {
+                *dratf << std::flush;
+                if (dratf != &std::cout) {
+                    delete dratf;
+                }
+            }
+
+            delete solver;
+        }
 
         void parseCommandLine();
-        int solve();
+        virtual int solve();
 
     private:
+        //arguments
+        int argc;
+        char** argv;
         string typeclean;
         string var_elim_strategy;
-        string drupfilname;
+        string dratfilname;
         void add_supported_options();
         void check_options_correctness();
         void manually_parse_some_options();
         void parse_var_elim_strategy();
-        void handle_drup_option();
+        void handle_drat_option();
         void parse_restart_type();
         void parse_polarity_type();
         void dumpIfNeeded() const;
@@ -61,52 +80,48 @@ class Main
 
         po::positional_options_description p;
         po::variables_map vm;
-        po::options_description cmdline_options;
+        po::options_description all_options;
         po::options_description help_options_simple;
         po::options_description help_options_complicated;
 
+    protected:
         SATSolver* solver = NULL;
+        SolverConf conf;
 
         //File reading
-        void readInAFile(const string& filename);
-        void readInStandardInput();
-        void parseInAllFiles();
+        void readInAFile(SATSolver* solver2, const string& filename);
+        void readInStandardInput(SATSolver* solver2);
+        void parseInAllFiles(SATSolver* solver2);
 
         //Helper functions
         void printResultFunc(
             std::ostream* os
             , const bool toFile
             , const lbool ret
-            , const bool firstSolut
         );
         void printVersionInfo();
         int correctReturnValue(const lbool ret) const;
+        lbool multi_solutions();
+        std::ofstream* resultfile = NULL;
 
         //Config
-        SolverConf conf;
-        bool needResultFile = false;
         bool zero_exit_status = false;
         std::string resultFilename;
-
         std::string debugLib;
         int printResult = true;
         string commandLine;
         unsigned num_threads = 1;
-
-        //Multi-start solving
         uint32_t max_nr_of_solutions = 1;
 
         //Files to read & write
         bool fileNamePresent;
         vector<string> filesToRead;
 
-        //Command line arguments
-        int argc;
-        char** argv;
+        //Drat checker
+        std::ostream* dratf = NULL;
+        bool dratDebug = false;
 
-        //Drup checker
-        std::ostream* drupf = NULL;
-        bool drupDebug = false;
+        vector<uint32_t> independent_vars;
 };
 
 #endif //MAIN_H

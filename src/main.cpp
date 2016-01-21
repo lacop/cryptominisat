@@ -1,5 +1,6 @@
 /*
-Copyright (c) 2014 Mate Soos
+Copyright (c) 2010-2015 Mate Soos
+Copyright (c) Kuldeep S. Meel, Daniel J. Fremont
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -39,19 +40,19 @@ THE SOFTWARE.
 #include <map>
 #include <set>
 #include <fstream>
-#include <signal.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <string.h>
-#ifdef USE_PTHREADS
+#include <list>
+#include <array>
 #include <thread>
-#endif
 
 #include "main.h"
 #include "main_common.h"
 #include "time_mem.h"
 #include "dimacsparser.h"
 #include "cryptominisat4/cryptominisat.h"
+#include "signalcode.h"
 
 #ifdef USE_ZLIB
 static size_t gz_read(void* buf, size_t num, size_t count, gzFile f)
@@ -69,6 +70,8 @@ using std::cout;
 using std::cerr;
 using std::endl;
 using boost::lexical_cast;
+using std::list;
+using std::map;
 
 struct WrongParam
 {
@@ -91,7 +94,7 @@ struct WrongParam
     string msg;
 };
 
-bool fileExists(const std::string& filename)
+bool fileExists(const string& filename)
 {
     struct stat buf;
     if (stat(filename.c_str(), &buf) != -1)
@@ -103,55 +106,24 @@ bool fileExists(const std::string& filename)
 
 
 Main::Main(int _argc, char** _argv) :
-    fileNamePresent (false)
-    , argc(_argc)
+    argc(_argc)
     , argv(_argv)
+    , fileNamePresent (false)
 {
 }
 
-SATSolver* solverToInterrupt;
-int clear_interrupt;
-string redDumpFname;
-string irredDumpFname;
-
-void SIGINT_handler(int)
+void Main::readInAFile(SATSolver* solver2, const string& filename)
 {
-    SATSolver* solver = solverToInterrupt;
-    cout << "c " << endl;
-    std::cerr << "*** INTERRUPTED ***" << endl;
-    if (!redDumpFname.empty() || !irredDumpFname.empty() || clear_interrupt) {
-        solver->interrupt_asap();
-        std::cerr
-        << "*** Please wait. We need to interrupt cleanly" << endl
-        << "*** This means we might need to finish some calculations"
-        << endl;
-    } else {
-        if (solver->nVars() > 0) {
-            //if (conf.verbosity >= 1) {
-                solver->add_in_partial_solving_stats();
-                solver->print_stats();
-            //}
-        } else {
-            cout
-            << "No clauses or variables were put into the solver, exiting without stats"
-            << endl;
-        }
-        _exit(1);
-    }
-}
-
-void Main::readInAFile(const string& filename)
-{
-    solver->add_sql_tag("filename", filename);
+    solver2->add_sql_tag("filename", filename);
     if (conf.verbosity >= 1) {
         cout << "c Reading file '" << filename << "'" << endl;
     }
     #ifndef USE_ZLIB
     FILE * in = fopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<FILE*, fread_op_norm, fread> > parser(solver, debugLib, conf.verbosity);
+    DimacsParser<StreamBuffer<FILE*, fread_op_norm, fread> > parser(solver2, debugLib, conf.verbosity);
     #else
     gzFile in = gzopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<gzFile, fread_op_zip, gz_read> > parser(solver, debugLib, conf.verbosity);
+    DimacsParser<StreamBuffer<gzFile, fread_op_zip, gz_read> > parser(solver2, debugLib, conf.verbosity);
     #endif
 
     if (in == NULL) {
@@ -166,6 +138,12 @@ void Main::readInAFile(const string& filename)
     if (!parser.parse_DIMACS(in)) {
         exit(-1);
     }
+    independent_vars = parser.independent_vars;
+    if (independent_vars.empty()) {
+        for(size_t i = 0; i < solver->nVars(); i++) {
+            independent_vars.push_back(i);
+        }
+    }
 
     #ifndef USE_ZLIB
         fclose(in);
@@ -174,7 +152,7 @@ void Main::readInAFile(const string& filename)
     #endif
 }
 
-void Main::readInStandardInput()
+void Main::readInStandardInput(SATSolver* solver2)
 {
     if (conf.verbosity) {
         cout
@@ -194,9 +172,9 @@ void Main::readInStandardInput()
     }
 
     #ifndef USE_ZLIB
-    DimacsParser<StreamBuffer<FILE*, fread_op_norm, fread> > parser(solver, debugLib, conf.verbosity);
+    DimacsParser<StreamBuffer<FILE*, fread_op_norm, fread> > parser(solver2, debugLib, conf.verbosity);
     #else
-    DimacsParser<StreamBuffer<gzFile, fread_op_zip, gz_read> > parser(solver, debugLib, conf.verbosity);
+    DimacsParser<StreamBuffer<gzFile, fread_op_zip, gz_read> > parser(solver2, debugLib, conf.verbosity);
     #endif
 
     if (!parser.parse_DIMACS(in)) {
@@ -208,7 +186,7 @@ void Main::readInStandardInput()
     #endif
 }
 
-void Main::parseInAllFiles()
+void Main::parseInAllFiles(SATSolver* solver2)
 {
     const double myTime = cpuTime();
 
@@ -222,14 +200,12 @@ void Main::parseInAllFiles()
         std::exit(-1);
     }
 
-    for (vector<string>::const_iterator
-        it = filesToRead.begin(), end = filesToRead.end(); it != end; ++it
-    ) {
-        readInAFile(it->c_str());
+    for (const string& fname: filesToRead) {
+        readInAFile(solver2, fname.c_str());
     }
 
     if (!fileNamePresent) {
-        readInStandardInput();
+        readInStandardInput(solver2);
     }
 
     if (conf.verbosity >= 1) {
@@ -245,17 +221,16 @@ void Main::printResultFunc(
     std::ostream* os
     , const bool toFile
     , const lbool ret
-    , const bool firstSolution
 ) {
     if (ret == l_True) {
         if(toFile) {
-            if(firstSolution)  *os << "SAT" << endl;
+            *os << "SAT" << endl;
         }
         else if (!printResult) *os << "s SATISFIABLE" << endl;
         else                   *os << "s SATISFIABLE" << endl;
      } else if (ret == l_False) {
         if(toFile) {
-            if(firstSolution)  *os << "UNSAT" << endl;
+            *os << "UNSAT" << endl;
         }
         else if (!printResult) *os << "s UNSATISFIABLE" << endl;
         else                   *os << "s UNSATISFIABLE" << endl;
@@ -333,8 +308,6 @@ void Main::add_supported_options()
     reduceDBOptions.add_options()
     ("cleanconflmult", po::value(&conf.clean_confl_multiplier)->default_value(conf.clean_confl_multiplier, s_clean_confl_multiplier.str())
         , "If prop&confl are used to clean, by what value should we multiply the conflicts relative to propagations (conflicts are much more rare, but maybe more useful)")
-    ("clearstat", po::value(&conf.doClearStatEveryClauseCleaning)->default_value(conf.doClearStatEveryClauseCleaning)
-        , "Clear clause statistics data of each clause after clause cleaning")
     ("incclean", po::value(&conf.inc_max_temp_red_cls)->default_value(conf.inc_max_temp_red_cls, s_incclean.str())
         , "Clean increment cleaning by this factor for next cleaning")
     ("maxredratio", po::value(&conf.maxNumRedsRatio)->default_value(conf.maxNumRedsRatio)
@@ -421,7 +394,7 @@ void Main::add_supported_options()
     ("presimp", po::value(&conf.simplify_at_startup)->default_value(conf.simplify_at_startup)
         , "Perform simplification at the very start")
     ("nonstop,n", po::value(&conf.never_stop_search)->default_value(conf.never_stop_search)
-        , "Never stop the search() process in class Solver")
+        , "Never stop the search() process in class SATSolver")
 
     ("schedule", po::value(&conf.simplify_schedule_nonstartup)
         , "Schedule for simplification during run")
@@ -661,9 +634,9 @@ void Main::add_supported_options()
 
     po::options_description hiddenOptions("Debug options for fuzzing, weird options not exposed");
     hiddenOptions.add_options()
-    ("drupdebug", po::bool_switch(&drupDebug)
-        , "Output DRUP verification into the console. Helpful to see where DRUP fails -- use in conjunction with --verb 20")
-    ("clearinter", po::value(&clear_interrupt)->default_value(0)
+    ("dratdebug", po::bool_switch(&dratDebug)
+        , "Output DRAT verification into the console. Helpful to see where DRAT fails -- use in conjunction with --verb 20")
+    ("clearinter", po::value(&need_clean_exit)->default_value(0)
         , "Interrupt threads cleanly, all the time")
     ("zero-exit-status", po::bool_switch(&zero_exit_status)
         , "Exit with status zero in case the solving has finished without an issue")
@@ -672,8 +645,8 @@ void Main::add_supported_options()
         , "Reconfigure after this many simplifications")
     ("printtimes", po::value(&conf.do_print_times)->default_value(conf.do_print_times)
         , "Print time it took for each simplification run. If set to 0, logs are easier to compare")
-    ("drup,d", po::value(&drupfilname)
-        , "Put DRUP verification information into this file")
+    ("drat,d", po::value(&dratfilname)
+        , "Put DRAT verification information into this file")
     ("reconf", po::value(&conf.reconfigure_val)->default_value(conf.reconfigure_val)
         , "Reconfigure after some time to this solver configuration [0..13]")
     ("savedstate", po::value(&conf.saved_state_file)->default_value(conf.saved_state_file)
@@ -700,37 +673,22 @@ void Main::add_supported_options()
     ;
 #endif //USE_GAUSS
 
-    p.add("input", 1);
-    p.add("drup", 1);
-
-    cmdline_options
-    .add(generalOptions)
-    #if defined(USE_MYSQL) or defined(USE_SQLITE3)
-    .add(sqlOptions)
-    #endif
-    .add(restartOptions)
-    .add(printOptions)
-    .add(propOptions)
-    .add(reduceDBOptions)
-    .add(varPickOptions)
-    .add(polar_options)
-    .add(conflOptions)
-    .add(iterativeOptions)
-    .add(probeOptions)
-    .add(stampOptions)
-    .add(simplificationOptions)
-    .add(eqLitOpts)
-    .add(componentOptions)
-    #ifdef USE_M4RI
-    .add(xorOptions)
-    #endif
-    .add(gateOptions)
-    .add(miscOptions)
-    .add(hiddenOptions)
-    #ifdef USE_GAUSS
-    .add(gaussOptions)
-    #endif
+    po::options_description approxMCOptions("ApproxMC options");
+    approxMCOptions.add_options()
+    ("samples", po::value(&conf.samples)->default_value(conf.samples), "")
+    ("callsPerSolver", po::value(&conf.callsPerSolver)->default_value(conf.callsPerSolver), "")
+    ("pivotAC", po::value(&conf.pivotApproxMC)->default_value(conf.pivotApproxMC), "")
+    ("pivotUniGen", po::value(&conf.pivotUniGen)->default_value(conf.pivotUniGen), "")
+    ("kappa", po::value(&conf.kappa)->default_value(conf.kappa), "")
+    ("tApproxMC", po::value(&conf.tApproxMC)->default_value(conf.tApproxMC), "")
+    ("startIteration", po::value(&conf.startIteration)->default_value(conf.startIteration), "")
+    ("multisample", po::value(&conf.multisample)->default_value(conf.multisample), "")
+    ("aggregation", po::value(&conf.aggregateSolutions)->default_value(conf.aggregateSolutions), "")
+    ("looptout", po::value(&conf.loopTimeout)->default_value(conf.loopTimeout), "")
     ;
+
+    p.add("input", 1);
+    p.add("drat", 1);
 
     help_options_complicated
     .add(generalOptions)
@@ -754,11 +712,15 @@ void Main::add_supported_options()
     .add(xorOptions)
     #endif
     .add(gateOptions)
-    .add(miscOptions)
     #ifdef USE_GAUSS
     .add(gaussOptions)
     #endif
+    .add(approxMCOptions)
+    .add(miscOptions)
     ;
+
+    all_options.add(help_options_complicated);
+    all_options.add(hiddenOptions);
 
     help_options_simple
     .add(generalOptions)
@@ -768,7 +730,7 @@ void Main::add_supported_options()
 void Main::check_options_correctness()
 {
     try {
-        po::store(po::command_line_parser(argc, argv).options(cmdline_options).positional(p).run(), vm);
+        po::store(po::command_line_parser(argc, argv).options(all_options).positional(p).run(), vm);
         if (vm.count("hhelp"))
         {
             cout
@@ -862,7 +824,7 @@ void Main::check_options_correctness()
     ) {
         cerr
         << "ERROR: You gave too many positional arguments. Only at most two can be given:" << endl
-        << "       the 1st the CNF file input, and optinally, the 2nd the DRUP file output" << endl
+        << "       the 1st the CNF file input, and optinally, the 2nd the DRAT file output" << endl
         << "    OR (pre-processing)  1st for the input CNF, 2nd for the simplified CNF" << endl
         << "    OR (post-processing) 1st for the solution file" << endl
         ;
@@ -897,29 +859,29 @@ void Main::check_options_correctness()
     }
 }
 
-void Main::handle_drup_option()
+void Main::handle_drat_option()
 {
-    if (drupDebug) {
-        drupf = &std::cout;
+    if (dratDebug) {
+        dratf = &cout;
     } else {
-        std::ofstream* drupfTmp = new std::ofstream;
-        drupfTmp->open(drupfilname.c_str(), std::ofstream::out);
-        if (!*drupfTmp) {
+        std::ofstream* dratfTmp = new std::ofstream;
+        dratfTmp->open(dratfilname.c_str(), std::ofstream::out);
+        if (!*dratfTmp) {
             std::cerr
-            << "ERROR: Could not open DRUP file "
-            << drupfilname
+            << "ERROR: Could not open DRAT file "
+            << dratfilname
             << " for writing"
             << endl;
 
             std::exit(-1);
         }
-        drupf = drupfTmp;
+        dratf = dratfTmp;
     }
 
     if (!conf.otfHyperbin) {
         if (conf.verbosity >= 2) {
             cout
-            << "c OTF hyper-bin is needed for BProp in DRUP, turning it back"
+            << "c OTF hyper-bin is needed for BProp in DRAT, turning it back"
             << endl;
         }
         conf.otfHyperbin = true;
@@ -928,7 +890,7 @@ void Main::handle_drup_option()
     if (conf.doFindXors) {
         if (conf.verbosity >= 2) {
             cout
-            << "c XOR manipulation is not supported in DRUP, turning it off"
+            << "c XOR manipulation is not supported in DRAT, turning it off"
             << endl;
         }
         conf.doFindXors = false;
@@ -937,7 +899,7 @@ void Main::handle_drup_option()
     if (conf.doRenumberVars) {
         if (conf.verbosity >= 2) {
             cout
-            << "c Variable renumbering is not supported during DRUP, turning it off"
+            << "c Variable renumbering is not supported during DRAT, turning it off"
             << endl;
         }
         conf.doRenumberVars = false;
@@ -946,7 +908,7 @@ void Main::handle_drup_option()
     if (conf.doCompHandler) {
         if (conf.verbosity >= 2) {
             cout
-            << "c Component finding & solving is not supported during DRUP, turning it off"
+            << "c Component finding & solving is not supported during DRAT, turning it off"
             << endl;
         }
         conf.doCompHandler = false;
@@ -1063,7 +1025,16 @@ void Main::manually_parse_some_options()
     }
 
     if (vm.count("dumpresult")) {
-        needResultFile = true;
+        resultfile = new std::ofstream;
+        resultfile->open(resultFilename.c_str());
+        if (!(*resultfile)) {
+            cout
+            << "ERROR: Couldn't open file '"
+            << resultFilename
+            << "' for writing!"
+            << endl;
+            std::exit(-1);
+        }
     }
 
     parse_polarity_type();
@@ -1107,22 +1078,22 @@ void Main::manually_parse_some_options()
     }
 
     if (conf.preprocess == 1) {
-        if (!vm.count("drup")) {
+        if (!vm.count("drat")) {
             cout << "ERROR: When preprocessing, you must give the simplified file name as 2nd argument" << endl;
             std::exit(-1);
         }
-        conf.simplified_cnf = vm["drup"].as<string>();
+        conf.simplified_cnf = vm["drat"].as<string>();
     }
 
     if (conf.preprocess == 2) {
-        if (vm.count("drup")) {
+        if (vm.count("drat")) {
             cout << "ERROR: When postprocessing, you must NOT give a 2nd argument" << endl;
             std::exit(-1);
         }
     }
 
-    if (conf.preprocess == 0 && vm.count("drup")) {
-        handle_drup_option();
+    if (conf.preprocess == 0 && vm.count("drat")) {
+        handle_drat_option();
     }
 
     if (conf.verbosity >= 1) {
@@ -1132,7 +1103,7 @@ void Main::manually_parse_some_options()
 
 void Main::parseCommandLine()
 {
-    clear_interrupt = 0;
+    need_clean_exit = 0;
     conf.verbosity = 2;
     conf.verbStats = 1;
 
@@ -1201,46 +1172,52 @@ void Main::dumpIfNeeded() const
 
 void Main::check_num_threads_sanity(const unsigned thread_num) const
 {
-    #ifdef USE_PTHREADS
     const unsigned num_cores = std::thread::hardware_concurrency();
     if (num_cores == 0) {
         //Library doesn't know much, we can't do any checks.
         return;
     }
 
-    if (thread_num > num_cores) {
+    if (thread_num > num_cores && conf.verbosity >= 1) {
         std::cerr
         << "c WARNING: Number of threads requested is more than the number of"
         << " cores reported by the system.\n"
         << "c WARNING: This is not a good idea in general. It's best to set the"
         << " number of threads to the number of real cores" << endl;
     }
-    #endif
+}
+
+
+int Main::correctReturnValue(const lbool ret) const
+{
+    int retval = -1;
+    if (ret == l_True) {
+        retval = 10;
+    } else if (ret == l_False) {
+        retval = 20;
+    } else if (ret == l_Undef) {
+        retval = 15;
+    } else {
+        std::cerr << "Something is very wrong, output is neither l_Undef, nor l_False, nor l_True" << endl;
+        exit(-1);
+    }
+
+    if (zero_exit_status) {
+        return 0;
+    } else {
+        return retval;
+    }
 }
 
 int Main::solve()
 {
-
     solver = new SATSolver((void*)&conf);
     solverToInterrupt = solver;
-    if (drupf) {
-        solver->set_drup(drupf);
+    if (dratf) {
+        solver->set_drat(dratf);
     }
     check_num_threads_sanity(num_threads);
     solver->set_num_threads(num_threads);
-
-    std::ofstream resultfile;
-    if (needResultFile) {
-        resultfile.open(resultFilename.c_str());
-        if (!resultfile) {
-            cout
-            << "ERROR: Couldn't open file '"
-            << resultFilename
-            << "' for writing!"
-            << endl;
-            std::exit(-1);
-        }
-    }
 
     //Print command line used to execute the solver: for options and inputs
     if (conf.verbosity >= 1) {
@@ -1255,10 +1232,32 @@ int Main::solve()
     //Parse in DIMACS (maybe gzipped) files
     //solver->log_to_file("mydump.cnf");
     if (conf.preprocess != 2) {
-        parseInAllFiles();
+        parseInAllFiles(solver);
     }
 
-    //Multi-solutions
+    lbool ret = multi_solutions();
+    dumpIfNeeded();
+
+    if (conf.preprocess != 1) {
+        if (ret == l_Undef && conf.verbosity >= 1) {
+            cout
+            << "c Not finished running -- signal caught or some maximum reached"
+            << endl;
+        }
+        if (conf.verbosity >= 1) {
+            solver->print_stats();
+        }
+    }
+    printResultFunc(&cout, false, ret);
+    if (resultfile) {
+        printResultFunc(resultfile, true, ret);
+    }
+
+    return correctReturnValue(ret);
+}
+
+lbool Main::multi_solutions()
+{
     unsigned long current_nr_of_solutions = 0;
     lbool ret = l_True;
     while(current_nr_of_solutions < max_nr_of_solutions && ret == l_True) {
@@ -1266,10 +1265,9 @@ int Main::solve()
         current_nr_of_solutions++;
 
         if (ret == l_True && current_nr_of_solutions < max_nr_of_solutions) {
-            //Print result
-            printResultFunc(&cout, false, ret, current_nr_of_solutions == 1);
-            if (needResultFile) {
-                printResultFunc(&resultfile, true, ret, current_nr_of_solutions == 1);
+            printResultFunc(&cout, false, ret);
+            if (resultfile) {
+                printResultFunc(resultfile, true, ret);
             }
 
             if (conf.verbosity >= 1) {
@@ -1292,77 +1290,5 @@ int Main::solve()
             solver->add_clause(lits);
         }
     }
-
-    dumpIfNeeded();
-
-    if (conf.preprocess != 1) {
-        if (ret == l_Undef && conf.verbosity >= 1) {
-            cout
-            << "c Not finished running -- signal caught or some maximum reached"
-            << endl;
-        }
-        if (conf.verbosity >= 1) {
-            solver->print_stats();
-        }
-
-        //Final print of solution
-        printResultFunc(&cout, false, ret, current_nr_of_solutions == 1);
-        if (needResultFile) {
-            printResultFunc(&resultfile, true, ret, current_nr_of_solutions == 1);
-        }
-    }
-
-    //Delete solver
-    delete solver;
-    solver = NULL;
-
-    if (drupf) {
-        //flush DRUP
-        *drupf << std::flush;
-
-        //If it's not stdout, we have to delete the ofstream
-        if (drupf != &std::cout) {
-            delete drupf;
-        }
-    }
-
-    return correctReturnValue(ret);
-}
-
-int Main::correctReturnValue(const lbool ret) const
-{
-    if (zero_exit_status) {
-        return 0;
-    }
-
-    int retval = -1;
-    if      (ret == l_True)  retval = 10;
-    else if (ret == l_False) retval = 20;
-    else if (ret == l_Undef) retval = 15;
-    else {
-        cerr
-        << "Something is very wrong, output is neither l_Undef, nor l_False, nor l_True"
-        << endl;
-
-        std::exit(-1);
-    }
-
-    return retval;
-}
-
-int main(int argc, char** argv)
-{
-    #if defined(__GNUC__) && defined(__linux__)
-    feenableexcept(FE_INVALID   |
-                   FE_DIVBYZERO |
-                   FE_OVERFLOW
-    );
-    #endif
-
-    Main main(argc, argv);
-    main.parseCommandLine();
-
-    signal(SIGINT, SIGINT_handler);
-
-    return main.solve();
+    return ret;
 }

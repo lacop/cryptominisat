@@ -25,11 +25,12 @@
 
 #include "constants.h"
 #include "cloffset.h"
+#include "watched.h"
+#include "clause.h"
+
 #include <stdlib.h>
 #include <map>
 #include <vector>
-
-#include "watched.h"
 
 #define BASE_DATA_TYPE uint64_t
 
@@ -56,21 +57,27 @@ class ClauseAllocator {
         ClauseAllocator();
         ~ClauseAllocator();
 
-        template<class T> Clause* Clause_new(
+        template<class T>
+        Clause* Clause_new(
             const T& ps
-            , uint32_t conflictNum
-        );
-        Clause* Clause_new(Clause& c);
+            #ifdef STATS_NEEDED
+            , const uint32_t conflictNum
+            , const int64_t ID
+            #endif
+        ) {
+            void* mem = allocEnough(ps.size());
+            Clause* real= new (mem) Clause(ps
+            #ifdef STATS_NEEDED
+            , conflictNum
+            , ID
+            #endif
+            );
+
+            return real;
+        }
 
         ClOffset get_offset(const Clause* ptr) const;
 
-        /**
-        @brief Returns the pointer of a clause given its offset
-
-        Takes the "dataStart" of the correct stack, and adds the offset,
-        returning the thus created pointer. Used a LOT in propagation, thus this
-        is very important to be fast (therefore, it is an inlined method)
-        */
         inline Clause* ptr(const uint32_t offset) const
         {
             return (Clause*)(dataStart + offset);

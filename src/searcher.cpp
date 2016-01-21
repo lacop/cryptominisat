@@ -54,10 +54,10 @@ using std::endl;
 /**
 @brief Sets a sane default config and allocates handler classes
 */
-Searcher::Searcher(const SolverConf *_conf, Solver* _solver, bool* _needToInterrupt) :
+Searcher::Searcher(const SolverConf *_conf, Solver* _solver, std::atomic<bool>* _must_interrupt_inter) :
         HyperEngine(
             _conf
-            , _needToInterrupt
+            , _must_interrupt_inter
         )
 
         //variables
@@ -220,11 +220,11 @@ void Searcher::create_otf_subsuming_implicit_clause(const Clause& cl)
         cout  << endl;
     }
 
-    if (drup->enabled()) {
+    if (drat->enabled()) {
         for(unsigned  i = 0; i < newCl.size; i++) {
-            *drup << newCl.lits[i];
+            *drat << newCl.lits[i];
         }
-        *drup << fin;
+        *drat << fin;
     }
 
     stats.otfSubsumed++;
@@ -237,7 +237,7 @@ void Searcher::create_otf_subsuming_long_clause(
     Clause& cl
     , const ClOffset offset
 ) {
-    (*solver->drup) << deldelay << cl << fin;
+    (*solver->drat) << deldelay << cl << fin;
     solver->detachClause(cl, false);
     stats.otfSubsumed++;
     stats.otfSubsumedLong++;
@@ -257,7 +257,7 @@ void Searcher::create_otf_subsuming_long_clause(
         cout
         << "New smaller clause OTF:" << cl << endl;
     }
-    *drup << cl << fin << findelay;
+    *drat << cl << fin << findelay;
     otf_subsuming_long_cls.push_back(offset);
 }
 
@@ -417,8 +417,13 @@ Clause* Searcher::add_literals_from_confl_to_learnt(
     Clause* cl = NULL;
     switch (confl.getType()) {
         case tertiary_t : {
-            resolutions.tri++;
-            stats.resolvs.tri++;
+            if (confl.isRedStep()) {
+                resolutions.triRed++;
+                stats.resolvs.triRed++;
+            } else {
+                resolutions.triIrred++;
+                stats.resolvs.triIrred++;
+            }
             add_lit_to_learnt(confl.lit3());
 
             if (p == lit_Undef) {
@@ -430,8 +435,13 @@ Clause* Searcher::add_literals_from_confl_to_learnt(
         }
 
         case binary_t : {
-            resolutions.bin++;
-            stats.resolvs.bin++;
+            if (confl.isRedStep()) {
+                resolutions.binRed++;
+                stats.resolvs.binRed++;
+            } else {
+                resolutions.binIrred++;
+                stats.resolvs.binIrred++;
+            }
             if (p == lit_Undef) {
                 add_lit_to_learnt(failBinLit);
             }
@@ -442,11 +452,11 @@ Clause* Searcher::add_literals_from_confl_to_learnt(
         case clause_t : {
             cl = cl_alloc.ptr(confl.get_offset());
             if (cl->red()) {
-                resolutions.redL++;
-                stats.resolvs.redL++;
+                resolutions.longRed++;
+                stats.resolvs.longRed++;
             } else {
-                resolutions.irredL++;
-                stats.resolvs.irredL++;
+                resolutions.longIrred++;
+                stats.resolvs.longRed++;
             }
             #ifdef STATS_NEEDED
             cl->stats.used_for_uip_creation++;
@@ -498,15 +508,15 @@ void Searcher::minimize_learnt_clause()
     stats.recMinLitRem += origSize - learnt_clause.size();
 }
 
-void Searcher::mimimize_learnt_clause_more_maybe()
+void Searcher::mimimize_learnt_clause_more_maybe(const uint32_t glue)
 {
     if (conf.doMinimRedMore
         && learnt_clause.size() > 1
         && (conf.doAlwaysFMinim
-            //|| (calc_glue_using_seen2(learnt_clause) < 0.45*hist.glueHistLT.avg()
+            //|| glue < 0.45*hist.glueHistLT.avg()
             //    && learnt_clause.size() < 0.45*hist.conflSizeHistLT.avg())
             || (learnt_clause.size() <= conf.max_size_more_minim
-                && calc_glue_using_seen2(learnt_clause) <= conf.max_glue_more_minim)
+                && glue <= conf.max_glue_more_minim)
             )
     ) {
         stats.moreMinimLitsStart += learnt_clause.size();
@@ -690,7 +700,7 @@ Clause* Searcher::analyze_conflict(
     stats.litsRedNonMin += learnt_clause.size();
     minimize_learnt_clause();
     glue = calc_glue_using_seen2(learnt_clause);
-    mimimize_learnt_clause_more_maybe();
+    mimimize_learnt_clause_more_maybe(glue);
     print_fully_minimized_learnt_clause();
 
     stats.litsRedFinal += learnt_clause.size();
@@ -960,9 +970,7 @@ lbool Searcher::search()
 
     lbool dec_ret = l_Undef;
     while (
-        (!params.needToStopSearch
-            && !must_interrupt_asap()
-        )
+        !params.needToStopSearch
             || !confl.isNULL() //always finish the last conflict
     ) {
         if (!confl.isNULL()) {
@@ -1127,15 +1135,15 @@ double Searcher::luby(double y, int x)
 
 void Searcher::check_need_restart()
 {
-    if (must_interrupt_asap())  {
-        if (conf.verbosity >= 3)
-            cout << "c must_interrupt_asap() is set, restartig as soon as possible!" << endl;
-        params.needToStopSearch = true;
-    }
-
     if ((stats.conflStats.numConflicts & 0xff) == 0xff) {
-        //It's expensive to check time all the time
+        //It's expensive to check the time the time
         if (cpuTime() > conf.maxTime) {
+            params.needToStopSearch = true;
+        }
+
+        if (must_interrupt_asap())  {
+            if (conf.verbosity >= 3)
+                cout << "c must_interrupt_asap() is set, restartig as soon as possible!" << endl;
             params.needToStopSearch = true;
         }
     }
@@ -1214,9 +1222,9 @@ void Searcher::add_otf_subsume_long_clauses()
             //If none found, we have a propagating clause_t
             enqueue(cl[0], decisionLevel() == 0 ? PropBy() : PropBy(offset));
 
-            //Drup
+            //Drat
             if (decisionLevel() == 0) {
-                *drup << cl[0] << fin;
+                *drat << cl[0] << fin;
             }
         } else {
             //We have a non-propagating clause
@@ -1282,9 +1290,9 @@ void Searcher::add_otf_subsume_implicit_clause()
                 , by
             );
 
-            //Drup
+            //Drat
             if (decisionLevel() == 0) {
-                *drup << it->lits[0] << fin;
+                *drat << it->lits[0] << fin;
             }
         } else {
             //We have a non-propagating clause
@@ -1406,25 +1414,29 @@ Clause* Searcher::handle_last_confl_otf_subsumption(
     Clause* cl
     , const size_t glue
 ) {
-    //No on-the-fly subsumption
-    if (cl == NULL
-        || cl->gauss_temp_cl()
-    ) {
-        if (learnt_clause.size() > 3) {
-            cl = cl_alloc.Clause_new(learnt_clause, Searcher::sumConflicts());
-            cl->makeRed(glue);
-            ClOffset offset = cl_alloc.get_offset(cl);
-            solver->longRedCls.push_back(offset);
-            return cl;
-        }
+    //Cannot make a non-implicit into an implicit
+    if (learnt_clause.size() <= 3) {
+        *drat << learnt_clause << fin;
         return NULL;
     }
 
-    //Cannot make a non-implicit into an implicit
-    if (learnt_clause.size() <= 3)
-        return NULL;
+    //No on-the-fly subsumption
+    if (cl == NULL || cl->gauss_temp_cl()) {
+        cl = cl_alloc.Clause_new(learnt_clause
+        #ifdef STATS_NEEDED
+        , sumConflicts()
+        , clauseID++
+        #endif
+        );
+        cl->makeRed(glue);
+        ClOffset offset = cl_alloc.get_offset(cl);
+        solver->longRedCls.push_back(offset);
+        *drat << *cl << fin;
+        return cl;
+    }
 
     assert(cl->size() > 3);
+    *drat << learnt_clause << fin;
     if (conf.verbosity >= 6) {
         cout
         << "Detaching OTF subsumed (LAST) clause:"
@@ -1471,7 +1483,6 @@ bool Searcher::handle_conflict(const PropBy confl)
         , glue             //return glue here
     );
     print_learnt_clause();
-    *drup << learnt_clause << fin;
 
     if (params.update) {
         update_history_stats(backtrack_level, glue);
@@ -1658,27 +1669,17 @@ void Searcher::print_restart_stat()
     //Print restart stat
     if (conf.verbosity >= 2
         && ((lastRestartPrint + conf.print_restart_line_every_n_confl)
-          < stats.conflStats.numConflicts)
+          < sumConflicts())
     ) {
         //Print restart output header
         if (lastRestartPrintHeader == 0
-            ||(lastRestartPrintHeader + 20000) < stats.conflStats.numConflicts
+            ||(lastRestartPrintHeader + 20000) < sumConflicts()
         ) {
             print_restart_header();
-            lastRestartPrintHeader = stats.conflStats.numConflicts;
+            lastRestartPrintHeader = sumConflicts();
         }
         print_restart_stat_line();
-        lastRestartPrint = stats.conflStats.numConflicts;
-    }
-}
-
-void Searcher::setup_restart_print()
-{
-    //Set up restart printing status
-    lastRestartPrint = stats.conflStats.numConflicts;
-    lastRestartPrintHeader = stats.conflStats.numConflicts;
-    if (conf.verbosity >= 1) {
-        print_restart_stat_line();
+        lastRestartPrint = sumConflicts();
     }
 }
 
@@ -1865,7 +1866,6 @@ lbool Searcher::solve(
         && upper_level_iteration_num > 0
     ) {
         assert(solver->check_order_heap_sanity());
-        setup_restart_print();
         status = burst_search();
         if (status != l_Undef)
             goto end;
@@ -1878,13 +1878,10 @@ lbool Searcher::solve(
         calculate_and_set_polars();
     }
 
-    setup_restart_print();
     max_conflicts_this_restart = conf.restart_first;
     assert(solver->check_order_heap_sanity());
     for(loop_num = 0
-        ; !must_interrupt_asap()
-          && stats.conflStats.numConflicts < max_confl_per_search_solve_call
-          && !solver->must_interrupt_asap()
+        ; stats.conflStats.numConflicts < max_confl_per_search_solve_call
         ; loop_num ++
     ) {
         //#ifdef USE_GAUSS
@@ -2407,7 +2404,7 @@ std::pair<size_t, size_t> Searcher::remove_useless_bins(bool except_marked)
                 solver->binTri.irredBins--;
                 removedIrred++;
             }
-            *drup << del << it->getLit1() << it->getLit2() << fin;
+            *drat << del << it->getLit1() << it->getLit2() << fin;
 
             #ifdef VERBOSE_DEBUG_FULLPROP
             cout << "Removed bin: "
@@ -2693,10 +2690,10 @@ PropBy Searcher::propagate(
         ret = propagate_any_order<update_bogoprops>();
     }
 
-    //Drup -- If declevel 0 propagation, we have to add the unitaries
-    if (decisionLevel() == 0 && drup->enabled()) {
+    //Drat -- If declevel 0 propagation, we have to add the unitaries
+    if (decisionLevel() == 0 && drat->enabled()) {
         for(size_t i = origTrailSize; i < trail.size(); i++) {
-            #ifdef DEBUG_DRUP
+            #ifdef DEBUG_DRAT
             if (conf.verbosity >= 6) {
                 cout
                 << "c 0-level enqueue:"
@@ -2704,10 +2701,10 @@ PropBy Searcher::propagate(
                 << endl;
             }
             #endif
-            *drup << trail[i] << fin;
+            *drat << trail[i] << fin;
         }
         if (!ret.isNULL()) {
-            *drup << fin;
+            *drat << fin;
         }
     }
 
@@ -2950,7 +2947,12 @@ void Searcher::read_long_cls(
             f.get_struct(stats);
         }
 
-        Clause* cl = cl_alloc.Clause_new(tmp_cl, 0);
+        Clause* cl = cl_alloc.Clause_new(tmp_cl
+        #ifdef STATS_NEEDED
+        , stats.introduced_at_conflict
+        , stats.ID
+        #endif
+        );
         if (red) {
             cl->makeRed(stats.glue);
         }

@@ -142,7 +142,6 @@ class SolverConf
         double    clean_prop_multiplier;
         int       doPreClauseCleanPropAndConfl;
         unsigned  long long preClauseCleanLimit;
-        int       doClearStatEveryClauseCleaning;
         double    ratio_keep_clauses[10]; ///< Remove this ratio of clauses at every database reduction round
         double    inc_max_temp_red_cls;
         double    maxNumRedsRatio; ///<Number of red clauses must not be more than red*maxNumRedsRatio
@@ -344,6 +343,20 @@ class SolverConf
         std::string simplified_cnf;
         std::string solution_file;
         std::string saved_state_file;
+
+        //Approx MC
+        uint32_t samples;
+        uint32_t callsPerSolver;
+        uint32_t startIteration;
+        int32_t pivotApproxMC;
+        uint32_t pivotUniGen;
+        uint32_t samplesGen;
+        uint32_t tApproxMC;
+        int totalTimeout;
+        int loopTimeout;
+        float kappa;
+        bool multisample;
+        bool aggregateSolutions;
 };
 
 } //end namespace

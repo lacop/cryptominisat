@@ -19,8 +19,8 @@
  * MA 02110-1301  USA
 */
 
-#ifndef __DRUP_H__
-#define __DRUP_H__
+#ifndef __DRAT_H__
+#define __DRAT_H__
 
 #include "clause.h"
 #include <iostream>
@@ -28,15 +28,15 @@
 namespace CMSat {
 using namespace CMSat;
 
-enum DrupFlag{fin, deldelay, del, findelay};
+enum DratFlag{fin, deldelay, del, findelay};
 
-struct Drup
+struct Drat
 {
-    Drup()
+    Drat()
     {
     }
 
-    virtual ~Drup()
+    virtual ~Drat()
     {
     }
 
@@ -54,29 +54,29 @@ struct Drup
         return false;
     }
 
-    virtual Drup& operator<<(const Lit)
+    virtual Drat& operator<<(const Lit)
     {
 
         return *this;
     }
 
-    virtual Drup& operator<<(const Clause&)
+    virtual Drat& operator<<(const Clause&)
     {
         return *this;
     }
 
-    virtual Drup& operator<<(const vector<Lit>&)
+    virtual Drat& operator<<(const vector<Lit>&)
     {
         return *this;
     }
 
-     virtual Drup& operator<<(const DrupFlag)
+     virtual Drat& operator<<(const DratFlag)
     {
         return *this;
     }
 };
 
-struct DrupFile: public Drup
+struct DratFile: public Drat
 {
     void setFile(std::ostream* _file)
     {
@@ -104,7 +104,7 @@ struct DrupFile: public Drup
     bool delete_filled = false;
     bool must_delete_next = false;
 
-    Drup& operator<<(const Lit lit) override
+    Drat& operator<<(const Lit lit) override
     {
         if (must_delete_next) {
             todel << lit << " ";
@@ -115,32 +115,47 @@ struct DrupFile: public Drup
         return *this;
     }
 
-    Drup& operator<<(const Clause& cl) override
+    Drat& operator<<(const Clause& cl) override
     {
         if (must_delete_next) {
-            todel << cl;
+            todel << cl << " ";
         } else {
-            *file << cl;
+            *file << cl << " ";
         }
+        #ifdef STATS_NEEDED
+        ID = cl.stats.ID;
+        assert(ID != 0);
+        #endif
 
         return *this;
     }
 
-    Drup& operator<<(const DrupFlag flag) override
+    Drat& operator<<(const DratFlag flag) override
     {
         switch (flag)
         {
-            case DrupFlag::fin:
+            case DratFlag::fin:
                 if (must_delete_next) {
-                    todel << " 0\n";
+                    todel << "0"
+                    #ifdef STATS_NEEDED
+                    " 0"
+                    #endif
+                    "\n";
                     delete_filled = true;
                 } else {
-                    *file << " 0\n";
+                    *file << "0 "
+                    #ifdef STATS_NEEDED
+                    << ID
+                    #endif
+                    << "\n";
                 }
+                #ifdef STATS_NEEDED
+                ID = 1;
+                #endif
                 must_delete_next = false;
                 break;
 
-            case DrupFlag::deldelay:
+            case DratFlag::deldelay:
                 assert(!delete_filled);
                 assert(todel.str() == "");
                 todel.str(string());
@@ -149,14 +164,14 @@ struct DrupFile: public Drup
                 must_delete_next = true;
                 break;
 
-            case DrupFlag::findelay:
+            case DratFlag::findelay:
                 assert(delete_filled);
                 *file << "d " << todel.str();
                 todel.str(string());
                 delete_filled = false;
                 break;
 
-            case DrupFlag::del:
+            case DratFlag::del:
                 todel.str(string());
                 delete_filled = false;
 
@@ -168,20 +183,23 @@ struct DrupFile: public Drup
         return *this;
     }
 
-    Drup& operator<<(const vector<Lit>& lits) override
+    Drat& operator<<(const vector<Lit>& lits) override
     {
-         if (must_delete_next) {
-            todel << lits;
+        if (must_delete_next) {
+            todel << lits << " ";
         } else {
-            *file << lits;
+            *file << lits << " ";
         }
 
         return *this;
     }
 
     std::ostream* file = NULL;
+    #ifdef STATS_NEEDED
+    int64_t ID = 1;
+    #endif
 };
 
 }
 
-#endif //__DRUP_H__
+#endif //__DRAT_H__

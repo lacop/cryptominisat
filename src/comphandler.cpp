@@ -238,7 +238,7 @@ bool CompHandler::solve_component(
     , const vector<uint32_t>& vars_orig
     , const size_t num_comps
 ) {
-    assert(!solver->drup->enabled());
+    assert(!solver->drat->enabled());
     vector<uint32_t> vars(vars_orig);
     components_solved++;
 
@@ -256,7 +256,10 @@ bool CompHandler::solve_component(
 
     //Set up new solver
     SolverConf conf = configureNewSolver(vars.size());
-    SATSolver newSolver((void*)&conf, solver->get_must_interrupt_asap_ptr());
+    SATSolver newSolver(
+        (void*)&conf
+        , solver->get_must_interrupt_inter_asap_ptr()
+    );
     moveVariablesBetweenSolvers(&newSolver, vars, comp);
 
     //Move clauses over

@@ -30,6 +30,7 @@ THE SOFTWARE.
 #include <vector>
 #include <iostream>
 #include <utility>
+#include <atomic>
 #include "cryptominisat4/solvertypesmini.h"
 
 namespace CMSat {
@@ -37,7 +38,9 @@ namespace CMSat {
     class SATSolver
     {
     public:
-        SATSolver(void* config = NULL, bool* interrupt_asap = NULL);
+        SATSolver(void* config = NULL
+        , std::atomic<bool>* interrupt_asap = NULL
+        );
         ~SATSolver();
         void set_num_threads(unsigned n);
         unsigned nVars() const;
@@ -70,7 +73,7 @@ namespace CMSat {
         static const char* get_compilation_env();
 
         void print_stats() const;
-        void set_drup(std::ostream* os);
+        void set_drat(std::ostream* os);
         void interrupt_asap();
         void open_file_and_dump_irred_clauses(std::string fname) const;
         void open_file_and_dump_red_clauses(std::string fname) const;

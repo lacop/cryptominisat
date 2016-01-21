@@ -63,7 +63,7 @@ case $CMS_CONFIG in
     COVERAGE)
         sudo apt-get install libboost-program-options-dev
         eval cmake ${COMMON_CMAKE_ARGS} \
-                    -DCOVERAGE:BOOL=ON \
+                   -DCOVERAGE:BOOL=ON \
                    ${SOURCE_DIR}
     ;;
 
@@ -84,13 +84,6 @@ case $CMS_CONFIG in
         eval cmake ${COMMON_CMAKE_ARGS} \
                    -DONLY_SIMPLE:BOOL=ON \
                    -DSTATICCOMPILE:BOOL=ON \
-                   ${SOURCE_DIR}
-    ;;
-
-    MORE_DEBUG)
-        sudo apt-get install libboost-program-options-dev
-        eval cmake ${COMMON_CMAKE_ARGS} \
-                   -DMORE_DEBUG:BOOL=ON \
                    ${SOURCE_DIR}
     ;;
 
@@ -240,6 +233,14 @@ if [ "$CMS_CONFIG" == "NORMAL" ]; then
     CMS_PATH="${BUILD_DIR}/cryptominisat4"
     cd ../tests/simp-checks/
     git clone --depth 1 https://github.com/msoos/testfiles.git
+
+    echo "Cloning and making minisat..."
+    git clone https://github.com/msoos/minisat.git
+    cd minisat
+    git checkout remotes/origin/only_elim_and_subsume
+    git checkout -b only_elim_and_subsume
+    make
+    cd ..
     ./checks.py $CMS_PATH testfiles/*
     cd ${BUILD_DIR}
 
@@ -265,7 +266,7 @@ fi
 
 
 #do fuzz testing
-if [ "$CMS_CONFIG" != "ONLY_SIMPLE" ] && [ "$CMS_CONFIG" != "AWS" ] && [ "$CMS_CONFIG" != "WEB" ] && [ "$CMS_CONFIG" != "NOPYTHON" ] && [ "$CMS_CONFIG" != "COVERAGE" ] && [ "$CMS_CONFIG" != "INTREE_BUILD" ]; then
+if [ "$CMS_CONFIG" != "ONLY_SIMPLE" ] && [ "$CMS_CONFIG" != "AWS" ] && [ "$CMS_CONFIG" != "WEB" ] && [ "$CMS_CONFIG" != "NOPYTHON" ] && [ "$CMS_CONFIG" != "COVERAGE" ] && [ "$CMS_CONFIG" != "INTREE_BUILD" ] && [ "$CMS_CONFIG" != "STATS" ] && [ "$CMS_CONFIG" != "SQLITE" ] && [ "$CMS_CONFIG" != "MYSQL" ]; then
     cd ../scripts/fuzz/
     ./fuzz_test.py --novalgrind --small --fuzzlim 30
 fi

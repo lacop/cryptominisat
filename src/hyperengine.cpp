@@ -24,8 +24,8 @@
 
 using namespace CMSat;
 
-HyperEngine::HyperEngine(const SolverConf *_conf, bool* _needToInterrupt) :
-    PropEngine(_conf, _needToInterrupt)
+HyperEngine::HyperEngine(const SolverConf *_conf, std::atomic<bool>* _must_interrupt_inter) :
+    PropEngine(_conf, _must_interrupt_inter)
 {
 }
 
@@ -555,7 +555,7 @@ void HyperEngine::add_hyper_bin(const Lit p)
         cout << "Adding hyper-bin clause: " << p << " , " << ~deepestAncestor << endl;
         #endif
         needToAddBinClause.insert(BinaryClause(p, ~deepestAncestor, true));
-        *drup << p << (~deepestAncestor) << fin;
+        *drat << p << (~deepestAncestor) << fin;
 
         hyperBinNotAdded = false;
     } else {
